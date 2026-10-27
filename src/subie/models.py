@@ -11,6 +11,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from subie.errors import one_line
+
 
 @dataclass(frozen=True)
 class Model:
@@ -81,3 +83,21 @@ def present_models(root: Path | None = None) -> tuple[Model, ...]:
         if (cache / hub_name).is_dir() or (cache / direct_name).is_dir():
             found.append(model)
     return tuple(found)
+
+
+def load_error(model: Model, cause: BaseException) -> str:
+    """One user-facing line explaining why a model could not be loaded."""
+    cache = models_dir()
+    try:
+        cached = model in present_models(cache)
+    except Exception:
+        cached = False
+    if cached:
+        return (
+            f"model '{model.name}' is in the cache at {cache}, "
+            f"but the engine could not start: {one_line(cause)}"
+        )
+    return (
+        f"model '{model.name}' ({model.repo_id}) is not in the cache at {cache} "
+        f"and could not be downloaded: {one_line(cause)}"
+    )

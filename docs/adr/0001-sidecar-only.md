@@ -16,3 +16,9 @@ Choosing sidecar keeps the whole pipeline non-destructive and lets a bad transcr
 stimulus for a re-run instead of a lost encode. If burn-in is ever wanted, it belongs as
 a second renderer over the same Cue list — a decision to be revisited then, not smuggled
 in as an option of the transcription pipeline.
+
+One debug-side exception is recorded here rather than left implicit: `--keep-audio`
+deliberately writes a `<stem>.keep-audio.wav` beside the Video so a recognition problem
+can be listened to. It is off by default, is not a product artifact, and never replaces or
+modifies the Sidecar. The guarantee this ADR makes is about subtitle output: normal runs
+produce the Sidecar and nothing else.

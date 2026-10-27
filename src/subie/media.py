@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from subie.errors import SubieError
 
-class MediaError(Exception):
+
+class MediaError(SubieError):
     """A Video could not be opened or read."""
 
 

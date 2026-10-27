@@ -18,12 +18,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from subie.audio import Audio
 from subie.hardware import Hardware
 from subie.media import MediaInfo
+from subie.transcript import Transcript
 
 
 class Transcriber(Protocol):
-    """The recognition engine. Its shape is defined by the ticket that first uses it."""
+    """The recognition engine: audio in memory, a Transcript out."""
+
+    def transcribe(self, audio: Audio) -> Transcript: ...
 
 
 class MediaProbe(Protocol):

@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from subie.deps import Deps
+from subie.audio import Audio
+from subie.deps import Deps, Transcriber
 from subie.hardware import Hardware
 from subie.media import MediaInfo
+from subie.transcript import Segment, Transcript, Word
 
 #: A machine whose RTX 3070 Ti works: CUDA resolves and a device is visible.
 GPU_READY = Hardware(
@@ -63,15 +65,43 @@ class FakeDeviceProbe:
         return self.hardware
 
 
-class FakeTranscriberFactory:
-    """Doctor must never build the engine: doing so would download a model."""
+class FakeTranscriber:
+    """A Transcriber that returns a fixed Transcript and records the audio it saw."""
 
-    def __init__(self) -> None:
+    def __init__(self, transcript: Transcript | None = None) -> None:
+        self.transcript = transcript or Transcript(segments=())
+        self.error: Exception | None = None
+        self.seen: list[Audio] = []
+
+    def transcribe(self, audio: Audio) -> Transcript:
+        self.seen.append(audio)
+        if self.error is not None:
+            raise self.error
+        return self.transcript
+
+
+class FakeTranscriberFactory:
+    """Builds a :class:`FakeTranscriber`; by default it refuses to build anything.
+
+    Doctor must never construct the engine: doing so would download a model.
+    """
+
+    def __init__(
+        self,
+        transcriber: FakeTranscriber | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.transcriber = transcriber
+        self.error = error
         self.calls: list[tuple[str, str, str]] = []
 
-    def __call__(self, model: str, *, device: str, compute_type: str) -> object:
+    def __call__(self, model: str, *, device: str, compute_type: str) -> Transcriber:
         self.calls.append((model, device, compute_type))
-        raise AssertionError("doctor must not construct a Transcriber")
+        if self.error is not None:
+            raise self.error
+        if self.transcriber is None:
+            raise AssertionError("doctor must not construct a Transcriber")
+        return self.transcriber
 
 
 def make_deps(
@@ -85,4 +115,18 @@ def make_deps(
         probe=media_probe or FakeMediaProbe(),
         device=device_probe or FakeDeviceProbe(hardware or Hardware()),
         make_transcriber=transcriber_factory or FakeTranscriberFactory(),
+    )
+
+
+def one_segment(text: str = "Hello there.", *, start: float = 0.0, end: float = 1.5) -> Transcript:
+    """The simplest Transcript for a Job test."""
+    return Transcript(
+        segments=(
+            Segment(
+                start=start,
+                end=end,
+                text=text,
+                words=(Word(start=start, end=end, text=text),),
+            ),
+        )
     )

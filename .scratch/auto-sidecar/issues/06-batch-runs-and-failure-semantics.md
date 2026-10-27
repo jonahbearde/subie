@@ -17,3 +17,8 @@ Status: ready-for-agent
 - [ ] `--quiet` prints only errors; `--verbose` includes engine logging; the default stays one line per Video plus the Run summary.
 - [ ] The single-Video case still behaves exactly as it did before this ticket, with no Run summary printed for it.
 - [ ] Tests cover each behaviour above through the single agreed seam, including a folder containing a good Video, a broken Video, a non-video file, and an already-subtitled Video.
+## Comments
+
+Ticket 02's tracer bullet currently reports both "no audio stream" and "no speech detected"
+as a failed single Video, because it has no skip status yet. This ticket is where
+no-speech becomes a skip (warning, no Sidecar) while no-audio remains a failure.

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from subie.cli import run
-from subie.exit_codes import EXIT_OK, EXIT_USAGE
+from subie.exit_codes import EXIT_FAILED, EXIT_OK, EXIT_USAGE
 from tests.fakes import make_deps
 
 
@@ -25,6 +25,20 @@ def test_help_documents_every_command_and_flag(capsys):
     assert "doctor" in captured.out
     assert "--version" in captured.out
     assert "--help" in captured.out
+    assert "--device" in captured.out
+    assert "--model" in captured.out
+    assert "--keep-audio" in captured.out
+
+
+def test_sidecar_help_documents_the_default_action(capsys):
+    code = run(["talk.wav", "--help"], make_deps())
+
+    captured = capsys.readouterr()
+    assert code == EXIT_OK
+    assert "VIDEO" in captured.out
+    assert "--device" in captured.out
+    assert "--model" in captured.out
+    assert "--keep-audio" in captured.out
 
 
 def test_doctor_help_documents_its_flags(capsys):
@@ -36,6 +50,14 @@ def test_doctor_help_documents_its_flags(capsys):
     assert "--model" in captured.out
 
 
+def test_flags_before_a_command_still_run_the_command(capsys):
+    code = run(["--device", "cpu", "doctor"], make_deps())
+
+    captured = capsys.readouterr()
+    assert code == EXIT_OK
+    assert "subie doctor" in captured.out
+
+
 def test_version_prints_the_package_version(capsys):
     code = run(["--version"], make_deps())
 
@@ -45,12 +67,12 @@ def test_version_prints_the_package_version(capsys):
     assert "0.1.0" in captured.out
 
 
-def test_unknown_command_is_a_usage_error_without_a_traceback(capsys):
+def test_a_bare_unknown_token_is_treated_as_a_missing_video_path(capsys):
     code = run(["frobnicate"], make_deps())
 
     captured = capsys.readouterr()
-    assert code == EXIT_USAGE
-    assert "usage: subie" in captured.err
+    assert code == EXIT_FAILED
+    assert "video not found: frobnicate" in captured.err
     assert "Traceback" not in captured.err
 
 
