@@ -5,12 +5,14 @@ from __future__ import annotations
 import re
 import wave
 
-from subie.cli import EXIT_FAILED, EXIT_OK, EXIT_USAGE, run
+from subie.cli import run
+from subie.exit_codes import EXIT_FAILED, EXIT_OK, EXIT_USAGE
 from subie.media import MediaError
 from tests.fakes import (
     CPU_ONLY,
     GPU_READY,
     GPU_UNUSABLE,
+    NO_GPU_LIBRARIES_OK,
     FakeDeviceProbe,
     FakeMediaProbe,
     FakeTranscriberFactory,
@@ -67,6 +69,19 @@ def test_cpu_only_machine_never_claims_a_gpu(capsys):
     assert "resolved" not in _field(out, "cuda libraries")
     assert _field(out, "compute type") == "int8"
     assert _field(out, "model").startswith("small.en")
+    assert _field(out, "result").startswith("ready")
+
+
+def test_cpu_only_machine_reports_cuda_libraries_resolved_when_they_are(capsys):
+    """No GPU is not the same fact as CUDA libraries failing to load."""
+    code, out, err = _doctor(capsys, make_deps(hardware=NO_GPU_LIBRARIES_OK))
+
+    assert code == EXIT_OK
+    assert "Traceback" not in out + err
+    assert _field(out, "gpu") == "none visible"
+    assert _field(out, "device") == "cpu"
+    assert _field(out, "cuda libraries").startswith("resolved")
+    assert "not resolved" not in _field(out, "cuda libraries")
     assert _field(out, "result").startswith("ready")
 
 

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from subie.cli import EXIT_OK, EXIT_USAGE, run
+from subie.cli import run
+from subie.exit_codes import EXIT_OK, EXIT_USAGE
 from tests.fakes import make_deps
 
 

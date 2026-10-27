@@ -24,6 +24,7 @@ from subie.hardware import (
     resolve_device,
 )
 from subie.media import ffmpeg_summary
+from subie.models import Model
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,7 @@ class Diagnosis:
 
 
 def diagnose(
-    deps: Deps, *, requested_device: str = "auto", requested_model: str | None = None
+    deps: Deps, *, requested_device: str = "auto", requested_model: Model | None = None
 ) -> Diagnosis:
     fields: list[tuple[str, str]] = []
     failures: list[str] = []
@@ -79,15 +80,12 @@ def diagnose(
 
     model_device = chosen.name if chosen is not None else "cpu"
     if requested_model is not None:
-        model = models.lookup(requested_model)
-        assert model is not None  # the CLI rejects unknown names before we get here
-        model_line = f"{model.name} (requested)"
+        model_line = f"{requested_model.name} (requested)"
     else:
         model_line = f"{models.default_for(model_device).name} (default for {model_device})"
     fields.append(("model", model_line))
     fields.append(("model cache", str(models.models_dir())))
-    present = models.present_models()
-    fields.append(("models present", ", ".join(model.name for model in present) or "none"))
+    fields.append(("models present", _models_present_line()))
 
     ready = not failures and chosen is not None and chosen.usable
     fields.append(("result", _result_line(failures, chosen, hardware, requested_device)))
@@ -135,17 +133,23 @@ def _gpu_line(hardware: Hardware) -> str:
 
 
 def _cuda_line(hardware: Hardware) -> str:
-    if hardware.cuda_usable:
+    if hardware.cuda_libraries_ok:
         versions = cuda_library_versions()
         return "resolved" + (f" ({', '.join(versions)})" if versions else "")
     if hardware.gpu_names:
-        missing = missing_library_from(hardware.cuda_error or "")
+        missing = missing_library_from(hardware.cuda_library_error or "")
         if missing:
             return f"not resolved: missing {missing}"
-        return f"not resolved: {hardware.cuda_error or 'reason unknown'}"
-    if hardware.cuda_error:
-        return f"not resolved: {hardware.cuda_error}"
+        return f"not resolved: {hardware.cuda_library_error or 'reason unknown'}"
     return "not needed (no GPU visible)"
+
+
+def _models_present_line() -> str:
+    try:
+        present = models.present_models()
+    except Exception as exc:
+        return f"unavailable: {one_line(exc)}"
+    return ", ".join(model.name for model in present) or "none"
 
 
 def _result_line(

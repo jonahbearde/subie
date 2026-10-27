@@ -12,19 +12,29 @@ from subie.media import MediaInfo
 #: A machine whose RTX 3070 Ti works: CUDA resolves and a device is visible.
 GPU_READY = Hardware(
     gpu_names=("NVIDIA GeForce RTX 3070 Ti",),
-    cuda_usable=True,
+    cuda_libraries_ok=True,
+    cuda_device_count=1,
     cuda_compute_types=("float16", "float32", "int8_float16"),
     cpu_compute_types=("float32", "int8", "int8_float32"),
 )
 
-#: A machine with no usable GPU at all.
+#: A machine with no usable GPU at all and no CUDA libraries resolved.
 CPU_ONLY = Hardware(cpu_compute_types=("float32", "int8", "int8_float32"))
+
+#: CUDA resolves, but there is no device: the libraries are not the problem.
+NO_GPU_LIBRARIES_OK = Hardware(
+    cuda_libraries_ok=True,
+    cuda_device_count=0,
+    cuda_compute_types=("float16", "float32", "int8_float16"),
+    cpu_compute_types=("float32", "int8", "int8_float32"),
+)
 
 #: The dangerous case: a GPU the driver can see, whose CUDA libraries do not resolve.
 GPU_UNUSABLE = Hardware(
     gpu_names=("NVIDIA GeForce GT 710",),
-    cuda_usable=False,
-    cuda_error="Could not load library cudnn_ops_infer64_8.dll. Error code 126",
+    cuda_libraries_ok=False,
+    cuda_library_error="Could not load library cudnn_ops_infer64_8.dll. Error code 126",
+    cuda_device_count=0,
     cpu_compute_types=("float32", "int8", "int8_float32"),
 )
 

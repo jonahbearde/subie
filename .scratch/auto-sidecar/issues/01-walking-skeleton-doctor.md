@@ -50,7 +50,12 @@ Exit code 0 because the CPU path works; the GPU is never described as available.
 missing-library case is covered by a fake device probe whose error names
 `cudnn_ops_infer64_8.dll`, and the real parser extracts that name for the report.
 
+The report keeps three facts apart: the driver's GPU list, whether the CUDA libraries
+load, and whether CTranslate2 can see a device. A GPU-less machine with working
+libraries therefore says `cuda libraries: resolved`, while a visible GPU with broken
+libraries says `not usable`.
+
 Install was verified with `uv tool install --python 3.13 --managed-python .` into an
 isolated tool directory, then running `subie --help` and `subie doctor` from it.
 
-Tests: 18 passing, no GPU and no model download required. `ruff` and `mypy` clean.
+Tests: 19 passing, no GPU and no model download required. `ruff` and `mypy` clean.

@@ -1,8 +1,9 @@
-"""What the machine can do: visible GPUs, whether CUDA actually resolves, compute types.
+"""What the machine can do: visible GPUs, whether CUDA resolves, compute types.
 
-The distinction this module exists for: a GPU can be *visible* (the driver and
-nvidia-smi know about it) while the CUDA libraries CTranslate2 needs *do not resolve*.
-Only the second fact decides whether the GPU can be used.
+Two independent facts decide the GPU path: whether the driver exposes a GPU at all, and
+whether the CUDA libraries CTranslate2 needs actually load. Keeping them apart is the
+point of this module: a visible GPU with broken libraries is not a usable GPU, and a
+machine with no GPU has not "failed to resolve" anything.
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from subie.errors import one_line
 
 #: Compute types preferred for CUDA, best first. float16 is the documented default.
 CUDA_COMPUTE_TYPES = ("float16", "int8_float16", "float32")
@@ -35,18 +38,30 @@ _NVIDIA_NAMESPACES = ("nvidia.cublas", "nvidia.cudnn")
 
 @dataclass(frozen=True)
 class Hardware:
-    """The machine's GPU situation, as observed rather than assumed."""
+    """The machine's GPU situation, as observed rather than assumed.
+
+    ``cuda_libraries_ok`` and ``cuda_device_count`` are deliberately separate facts:
+    libraries can resolve on a machine with no GPU, and a GPU can be visible to the
+    driver while the libraries it needs fail to load.
+    """
 
     #: Names of GPUs the driver reports, even when CUDA cannot be used.
     gpu_names: tuple[str, ...] = ()
-    #: True only when CTranslate2 can see a CUDA device and use it.
-    cuda_usable: bool = False
-    #: One-line reason CUDA is not usable, when it is not.
-    cuda_error: str | None = None
+    #: True when CTranslate2 could load its CUDA libraries.
+    cuda_libraries_ok: bool = False
+    #: One-line reason the CUDA libraries did not resolve.
+    cuda_library_error: str | None = None
+    #: CUDA devices CTranslate2 can see.
+    cuda_device_count: int = 0
     #: Compute types CTranslate2 supports on CUDA; empty when unknown.
     cuda_compute_types: tuple[str, ...] = ()
     #: Compute types CTranslate2 supports on CPU; empty when unknown.
     cpu_compute_types: tuple[str, ...] = ()
+
+    @property
+    def cuda_usable(self) -> bool:
+        """A GPU is usable only when the libraries resolve *and* a device is visible."""
+        return self.cuda_libraries_ok and self.cuda_device_count > 0
 
 
 @dataclass(frozen=True)
@@ -67,7 +82,7 @@ def resolve_device(hardware: Hardware, requested: str = "auto") -> Device:
         compute_type = _pick(CUDA_COMPUTE_TYPES, hardware.cuda_compute_types, "float16")
         if hardware.cuda_usable:
             return Device("cuda", compute_type, True)
-        reason = hardware.cuda_error or "no CUDA device is visible"
+        reason = hardware.cuda_library_error or "no CUDA device is visible to CTranslate2"
         return Device("cuda", compute_type, False, reason)
     if hardware.cuda_usable:
         compute_type = _pick(CUDA_COMPUTE_TYPES, hardware.cuda_compute_types, "float16")
@@ -78,11 +93,12 @@ def resolve_device(hardware: Hardware, requested: str = "auto") -> Device:
 def probe_hardware() -> Hardware:
     """Inspect the machine. Never raises: failures become part of the result."""
     _register_nvidia_libraries()
-    cuda_types, cuda_error = _probe_cuda()
+    libraries_ok, library_error, device_count, cuda_types = _probe_cuda()
     return Hardware(
         gpu_names=_gpu_names(),
-        cuda_usable=cuda_error is None,
-        cuda_error=cuda_error,
+        cuda_libraries_ok=libraries_ok,
+        cuda_library_error=library_error,
+        cuda_device_count=device_count,
         cuda_compute_types=cuda_types,
         cpu_compute_types=_supported_compute_types("cpu"),
     )
@@ -125,29 +141,24 @@ def _supported_compute_types(device: str) -> tuple[str, ...]:
         return ()
 
 
-def _probe_cuda() -> tuple[tuple[str, ...], str | None]:
-    """Return (supported compute types, error)."""
+def _probe_cuda() -> tuple[bool, str | None, int, tuple[str, ...]]:
+    """Return (libraries resolved, library error, device count, compute types)."""
     try:
         import ctranslate2
     except Exception as exc:
-        message = " ".join(str(exc).split()) or exc.__class__.__name__
-        return (), f"ctranslate2 is unavailable: {message}"
+        return False, f"ctranslate2 is unavailable: {one_line(exc)}", 0, ()
 
     try:
         compute_types = tuple(sorted(ctranslate2.get_supported_compute_types("cuda")))
     except Exception as exc:
-        message = " ".join(str(exc).split()) or exc.__class__.__name__
-        return (), message
+        return False, one_line(exc), 0, ()
 
     try:
-        device_count = ctranslate2.get_cuda_device_count()
-    except Exception as exc:
-        message = " ".join(str(exc).split()) or exc.__class__.__name__
-        return compute_types, message
-
-    if device_count < 1:
-        return compute_types, "no CUDA device is visible to CTranslate2"
-    return compute_types, None
+        device_count = int(ctranslate2.get_cuda_device_count())
+    except Exception:
+        # The libraries resolved; a failed device query means no usable device.
+        device_count = 0
+    return True, None, device_count, compute_types
 
 
 def _gpu_names() -> tuple[str, ...]:

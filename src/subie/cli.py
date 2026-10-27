@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections.abc import Sequence
 from typing import Never
@@ -27,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="subie",
         description="Write English .srt subtitles for English-language videos.",
-        epilog="Exit codes: 0 success, 1 a failed video, 2 usage error.",
+        epilog="Exit codes: 0 success, 1 a failed video or an unready machine, 2 usage error.",
     )
     parser.add_argument("--version", action="version", version=f"subie {__version__}")
 
@@ -72,13 +71,11 @@ def run(argv: Sequence[str], deps: Deps) -> int:
         return int(exc.code or EXIT_OK)
 
     try:
-        return _dispatch(args, deps)
+        return _doctor(args, deps)
     except UsageError as exc:
         _print_usage_error(parser, str(exc))
         return EXIT_USAGE
     except Exception as exc:
-        if os.environ.get("SUBIE_DEBUG"):
-            raise
         print(f"subie: error: {one_line(exc)}", file=sys.stderr)
         return EXIT_FAILED
 
@@ -87,22 +84,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     return run(sys.argv[1:] if argv is None else argv, default_deps())
 
 
-def _dispatch(args: argparse.Namespace, deps: Deps) -> int:
-    if args.command == "doctor":
-        return _doctor(args, deps)
-    raise UsageError(f"unknown command '{args.command}'")
-
-
 def _doctor(args: argparse.Namespace, deps: Deps) -> int:
+    requested_model = None
     if args.model is not None:
-        model = models.lookup(args.model)
-        if model is None:
+        requested_model = models.lookup(args.model)
+        if requested_model is None:
             names = ", ".join(model.name for model in models.known_models())
             raise UsageError(f"unknown model '{args.model}'; known models: {names}")
 
     from subie.doctor import diagnose
 
-    result = diagnose(deps, requested_device=args.device, requested_model=args.model)
+    result = diagnose(deps, requested_device=args.device, requested_model=requested_model)
     for line in result.lines:
         print(line)
     return result.exit_code
