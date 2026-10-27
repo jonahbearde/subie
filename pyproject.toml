@@ -1,0 +1,57 @@
+[project]
+name = "subie"
+version = "0.1.0"
+description = "Write English subtitles for English-language videos."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "av>=14.0",
+    "faster-whisper>=1.2",
+]
+
+[project.optional-dependencies]
+cuda = [
+    "nvidia-cublas-cu12>=12.4",
+    "nvidia-cudnn-cu12>=9.0",
+]
+
+[project.scripts]
+subie = "subie.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/subie"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "slow: end-to-end tests that need a real model and real audio",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests"]
+check_untyped_defs = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["av.*", "ctranslate2.*", "faster_whisper.*"]
+ignore_missing_imports = true
