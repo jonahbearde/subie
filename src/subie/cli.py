@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +29,7 @@ from subie.runs import (
     JobOutcome,
     JobStatus,
     RunSummary,
+    default_jobs,
     is_fresh,
     sidecar_for,
     videos_in,
@@ -37,7 +40,7 @@ COMMANDS = ("doctor", "models")
 
 _HELP_TOKENS = ("-h", "--help")
 
-_VALUE_FLAGS = ("--device", "--model", "--out-dir")
+_VALUE_FLAGS = ("--device", "--model", "--out-dir", "--jobs")
 
 
 class UsageError(Exception):
@@ -94,6 +97,15 @@ def _add_run_flags(parser: _Parser) -> None:
         help="write every Sidecar into DIR instead of beside its Video",
     )
     parser.add_argument(
+        "--jobs",
+        metavar="N",
+        type=_positive_int,
+        help=(
+            "run up to N Jobs at once (default: 1 on a GPU, a few on a CPU); "
+            "more Jobs in flight need more memory"
+        ),
+    )
+    parser.add_argument(
         "--quiet",
         action="store_true",
         help="print errors only, suppressing per-Video lines and the Run summary",
@@ -103,6 +115,17 @@ def _add_run_flags(parser: _Parser) -> None:
         action="store_true",
         help="include the recognition engine's own logging",
     )
+
+
+def _positive_int(raw: str) -> int:
+    """The ``--jobs`` type: a whole number of Jobs, at least one."""
+    try:
+        value = int(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a whole number") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return value
 
 
 def build_parser() -> _Parser:
@@ -229,7 +252,7 @@ def run(argv: Sequence[str], deps: Deps) -> int:
         _print_usage_error(parser, str(exc))
         return EXIT_USAGE
     except Exception as exc:
-        _print_error(exc)
+        _print_failure(one_line(exc))
         return EXIT_FAILED
 
 
@@ -296,90 +319,169 @@ def _requested_model(name: str | None) -> Model | None:
 
 
 def _sidecar(args: argparse.Namespace, deps: Deps) -> int:
-    requested_model = _requested_model(args.model)
+    options = _RunOptions(
+        model=_requested_model(args.model),
+        device=args.device,
+        jobs=args.jobs,
+        keep_audio=args.keep_audio,
+    )
     targets = _targets(args.paths, recursive=args.recursive)
     if not targets:
         return EXIT_OK
     out_dir = _prepare_out_dir(args.out_dir)
+    _reject_shared_sidecars(targets, out_dir)
 
     reporter = _Reporter(quiet=args.quiet)
     outcomes: list[JobOutcome] = []
-    settings: RunSettings | None = None
-    settings_failure: BaseException | None = None
+    pending: list[_PendingJob] = []
 
     with _engine_logging(args.verbose and not args.quiet):
         for target in targets:
-            if target.error is not None:
-                reporter.error(target.error)
-                outcomes.append(_failed(target.video, target.error))
-                continue
-
             sidecar = sidecar_for(target.video, out_dir)
-            if not args.force and is_fresh(target.video, sidecar):
+            if target.error is not None:
+                reporter.error(one_line(target.error))
+                outcomes.append(_failed(target.video, target.error))
+            elif not args.force and is_fresh(target.video, sidecar):
                 outcome = JobOutcome(
                     target.video, JobStatus.SKIPPED, sidecar=sidecar, detail="up to date"
                 )
                 outcomes.append(outcome)
                 reporter.job(outcome)
-                continue
+            else:
+                pending.append(_PendingJob(target.video, sidecar))
 
-            if settings is None:
-                if settings_failure is not None:
-                    outcomes.append(_failed(target.video, settings_failure, sidecar=sidecar))
-                    continue
-                try:
-                    settings = resolve_run_settings(
-                        deps,
-                        requested_device=args.device,
-                        requested_model=requested_model,
-                    )
-                    # The model must be in place before the first Video is decoded, so
-                    # an unpullable model costs nothing rather than a decode per Video.
-                    ensure_model(deps, settings.model)
-                except Exception as exc:
-                    settings_failure = exc
-                    reporter.error(exc)
-                    outcomes.append(_failed(target.video, exc, sidecar=sidecar))
-                    continue
-
-            try:
-                result = run_job(
-                    target.video,
-                    settings,
-                    deps,
-                    sidecar=sidecar,
-                    keep_audio=args.keep_audio,
-                )
-            except JobSkipped as exc:
-                reporter.warning(exc)
-                outcomes.append(
-                    JobOutcome(
-                        target.video,
-                        JobStatus.SKIPPED,
-                        sidecar=sidecar,
-                        detail=one_line(exc),
-                    )
-                )
-                continue
-            except Exception as exc:
-                reporter.error(exc)
-                outcomes.append(_failed(target.video, exc, sidecar=sidecar))
-                continue
-
-            outcome = JobOutcome(
-                video=result.video,
-                status=JobStatus.SUBTITLED,
-                sidecar=result.sidecar,
-                cues=result.cues,
-                elapsed_s=result.elapsed_s,
-            )
-            outcomes.append(outcome)
-            reporter.job(outcome)
+        outcomes.extend(_run_pending(pending, deps, options, reporter))
 
     summary = RunSummary.of(outcomes)
     if len(outcomes) > 1:
         reporter.summary(summary)
     return EXIT_FAILED if summary.any_failed else EXIT_OK
+
+
+@dataclass(frozen=True)
+class _RunOptions:
+    """What the command line asked a Run for, before the device and model resolve."""
+
+    model: Model | None
+    device: str
+    jobs: int | None
+    keep_audio: bool
+
+
+@dataclass(frozen=True)
+class _PendingJob:
+    """A Video that still needs a Job, and the Sidecar path it will write."""
+
+    video: Path
+    sidecar: Path
+
+
+@dataclass(frozen=True)
+class _JobLine:
+    """A Job that produced a Sidecar, reported as its one summary line."""
+
+    outcome: JobOutcome
+
+
+@dataclass(frozen=True)
+class _JobWarning:
+    """A Job that was skipped for a reason worth saying, with no summary line."""
+
+    outcome: JobOutcome
+    message: str
+
+
+@dataclass(frozen=True)
+class _JobFailure:
+    """A Job that failed, reported as an error."""
+
+    outcome: JobOutcome
+    message: str
+
+
+#: One Job's result, in the shape the reporter needs to show it.
+type _Attempt = _JobLine | _JobWarning | _JobFailure
+
+
+def _run_pending(
+    pending: list[_PendingJob], deps: Deps, options: _RunOptions, reporter: _Reporter
+) -> list[JobOutcome]:
+    """Resolve the Run once, then attempt every pending Job, reporting as each ends."""
+    if not pending:
+        return []
+    try:
+        settings = resolve_run_settings(
+            deps, requested_device=options.device, requested_model=options.model
+        )
+        # The model must be in place before the first Video is decoded, so an
+        # unpullable model costs nothing rather than a decode per Video.
+        ensure_model(deps, settings.model)
+    except Exception as exc:
+        reporter.error(one_line(exc))
+        return [_failed(item.video, exc, sidecar=item.sidecar) for item in pending]
+
+    workers = options.jobs or default_jobs(settings.device)
+    outcomes: list[JobOutcome] = []
+    for attempt in _attempts(pending, settings, deps, options.keep_audio, workers):
+        reporter.report(attempt)
+        outcomes.append(attempt.outcome)
+    return outcomes
+
+
+def _attempts(
+    pending: list[_PendingJob],
+    settings: RunSettings,
+    deps: Deps,
+    keep_audio: bool,
+    workers: int,
+) -> Iterator[_Attempt]:
+    """Each Job's attempt, in the only order a concurrent Run can promise: finishing."""
+    if workers == 1:
+        for item in pending:
+            yield _attempt(item, settings, deps, keep_audio)
+        return
+
+    pool = ThreadPoolExecutor(max_workers=workers)
+    futures = [pool.submit(_attempt, item, settings, deps, keep_audio) for item in pending]
+    try:
+        for future in as_completed(futures):
+            yield future.result()
+    except BaseException:
+        # An interrupted Run stops queuing Jobs; one already inside the engine cannot
+        # be cancelled mid-decode, but the rest must not start.
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    else:
+        pool.shutdown(wait=True)
+
+
+def _attempt(item: _PendingJob, settings: RunSettings, deps: Deps, keep_audio: bool) -> _Attempt:
+    """One Job, with every failure turned into the result the Run reports."""
+    try:
+        result = run_job(
+            item.video,
+            settings,
+            deps,
+            sidecar=item.sidecar,
+            keep_audio=keep_audio,
+        )
+    except JobSkipped as exc:
+        message = one_line(exc)
+        return _JobWarning(
+            JobOutcome(item.video, JobStatus.SKIPPED, sidecar=item.sidecar, detail=message),
+            message,
+        )
+    except Exception as exc:
+        return _JobFailure(_failed(item.video, exc, sidecar=item.sidecar), one_line(exc))
+    return _JobLine(
+        JobOutcome(
+            video=result.video,
+            status=JobStatus.SUBTITLED,
+            sidecar=result.sidecar,
+            cues=result.cues,
+            elapsed_s=result.elapsed_s,
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -414,6 +516,25 @@ def _targets(raw_paths: Sequence[str], *, recursive: bool) -> list[_Target]:
     return targets
 
 
+def _reject_shared_sidecars(targets: Sequence[_Target], out_dir: Path | None) -> None:
+    """A Sidecar path has one owner: two Videos writing one file would race.
+
+    This matters most under ``--jobs``, where two Jobs could truncate each other's
+    bytes, but it is ambiguous even serially: ``--out-dir`` plus ``-r`` can map two
+    same-named Videos in different folders onto one Sidecar.
+    """
+    owners: dict[str, Path] = {}
+    for target in targets:
+        if target.error is not None:
+            continue
+        sidecar = sidecar_for(target.video, out_dir)
+        key = os.path.normcase(os.path.abspath(sidecar))
+        owner = owners.get(key)
+        if owner is not None:
+            raise UsageError(f"{owner} and {target.video} would both write {sidecar}")
+        owners[key] = target.video
+
+
 def _prepare_out_dir(raw: str | None) -> Path | None:
     if raw is None:
         return None
@@ -434,21 +555,34 @@ def _failed(video: Path, exc: BaseException, *, sidecar: Path | None = None) -> 
 
 
 class _Reporter:
-    """The only place that decides what a Run's output looks like."""
+    """The only place that decides what a Run's output looks like.
+
+    Every line is printed here, on the thread that collects finished Jobs, so two Jobs
+    can never write halves of the same line.
+    """
 
     def __init__(self, *, quiet: bool) -> None:
         self.quiet = quiet
+
+    def report(self, attempt: _Attempt) -> None:
+        match attempt:
+            case _JobLine():
+                self.job(attempt.outcome)
+            case _JobWarning():
+                self.warning(attempt.message)
+            case _JobFailure():
+                self.error(attempt.message)
 
     def job(self, outcome: JobOutcome) -> None:
         if not self.quiet:
             print(_job_line(outcome))
 
-    def warning(self, exc: BaseException) -> None:
+    def warning(self, message: str) -> None:
         if not self.quiet:
-            print(f"subie: warning: {one_line(exc)}", file=sys.stderr)
+            print(f"subie: warning: {message}", file=sys.stderr)
 
-    def error(self, exc: BaseException) -> None:
-        _print_error(exc)
+    def error(self, message: str) -> None:
+        _print_failure(message)
 
     def summary(self, summary: RunSummary) -> None:
         if not self.quiet:
@@ -576,10 +710,6 @@ def _models_remove(name: str) -> int:
 
     print(f"removed {model.name}  {models.human_size(freed)}")
     return EXIT_OK
-
-
-def _print_error(exc: BaseException) -> None:
-    _print_failure(one_line(exc))
 
 
 def _print_failure(message: str) -> None:

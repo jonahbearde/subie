@@ -32,6 +32,7 @@ def test_help_documents_every_command_and_flag(capsys):
     assert "-r" in captured.out
     assert "--force" in captured.out
     assert "--out-dir" in captured.out
+    assert "--jobs" in captured.out
     assert "--quiet" in captured.out
     assert "--verbose" in captured.out
 
@@ -48,6 +49,7 @@ def test_sidecar_help_documents_the_default_action(capsys):
     assert "-r" in captured.out
     assert "--force" in captured.out
     assert "--out-dir" in captured.out
+    assert "--jobs" in captured.out
     assert "--quiet" in captured.out
     assert "--verbose" in captured.out
 

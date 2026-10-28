@@ -47,7 +47,9 @@ _Avoid_: ignore, no-op
 
 **Run**:
 One invocation of the tool, covering zero or more Jobs. It ends in a summary of
-subtitled, skipped, and failed counts when it covers more than one Video.
+subtitled, skipped, and failed counts when it covers more than one Video. A Run keeps up
+to `--jobs` Jobs in flight at once; that changes throughput and memory, never the bytes
+of a Sidecar.
 _Avoid_: session, batch
 
 **Zero-arg Run**:

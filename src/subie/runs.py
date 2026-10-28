@@ -7,6 +7,7 @@ model or the network.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -117,7 +118,8 @@ def videos_in(directory: Path, *, recursive: bool) -> list[Path]:
     """The Videos directly inside ``directory``, or below it when ``recursive``.
 
     Non-video files and (unless recursive) subfolders are ignored without a word. The
-    order is stable so that a Run's output is reproducible.
+    order is stable, so the same folder always yields the same targets; with several
+    Jobs in flight, a Run reports them as they finish rather than in this order.
     """
     walker = directory.rglob("*") if recursive else directory.iterdir()
     videos = [path for path in walker if path.is_file() and is_video_path(path)]
@@ -140,3 +142,27 @@ def is_fresh(video: Path, sidecar: Path) -> bool:
         return sidecar.stat().st_mtime_ns >= video.stat().st_mtime_ns
     except OSError:
         return False
+
+
+#: Cores one CPU Job can keep busy, so the default leaves the machine mostly to itself.
+CORES_PER_JOB = 4
+
+#: A CPU machine defaults to at least this many Jobs: throughput is the reason for
+#: running on the CPU at all, and a one-core branch would silently match the GPU default.
+MIN_CPU_JOBS = 2
+
+#: A ceiling on the default, so a large machine does not open one model per core.
+MAX_DEFAULT_JOBS = 8
+
+
+def default_jobs(device: str) -> int:
+    """How many Jobs a Run keeps in flight when ``--jobs`` is absent.
+
+    A GPU runs one Job at a time: the model already saturates it, and a second copy
+    would cost memory for no throughput. A CPU runs a small fraction of its cores,
+    because there the trade really is memory for throughput.
+    """
+    if device == "cuda":
+        return 1
+    cores = os.cpu_count() or 1
+    return max(MIN_CPU_JOBS, min(MAX_DEFAULT_JOBS, cores // CORES_PER_JOB))

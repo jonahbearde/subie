@@ -11,46 +11,15 @@ from subie.cli import run
 from subie.exit_codes import EXIT_FAILED, EXIT_OK, EXIT_USAGE
 from subie.media import MediaError, MediaInfo
 from subie.transcript import Transcript
-from tests.fakes import (
-    CPU_ONLY,
-    FakeMediaProbe,
-    FakeTranscriber,
-    FakeTranscriberFactory,
-    make_deps,
-    one_segment,
-)
+from tests.fakes import FakeMediaProbe, FakeTranscriber, one_segment
+from tests.support import deps as _deps
+from tests.support import make_fresh as _make_fresh
 from tests.wav import write_wav
-
-
-def _deps(
-    transcript: Transcript | None = None,
-    *,
-    media_probe: FakeMediaProbe | None = None,
-    transcriber: FakeTranscriber | None = None,
-):
-    transcriber = transcriber or FakeTranscriber(transcript or one_segment("Hello there."))
-    factory = FakeTranscriberFactory(transcriber)
-    deps = make_deps(
-        hardware=CPU_ONLY,
-        media_probe=media_probe,
-        transcriber_factory=factory,
-    )
-    return deps, factory, transcriber
 
 
 def _video(path: Path) -> Path:
     write_wav(path)
     return path
-
-
-def _make_fresh(video: Path, contents: bytes = b"old sidecar") -> Path:
-    """Give ``video`` a Sidecar whose mtime is unambiguously newer."""
-    sidecar = video.with_suffix(".srt")
-    sidecar.write_bytes(contents)
-    stamp = time.time_ns()
-    os.utime(video, ns=(stamp, stamp))
-    os.utime(sidecar, ns=(stamp + 1_000_000_000, stamp + 1_000_000_000))
-    return sidecar
 
 
 def test_a_folder_subtitles_every_video_directly_inside_and_ignores_non_videos(tmp_path, capsys):
@@ -71,7 +40,7 @@ def test_a_folder_subtitles_every_video_directly_inside_and_ignores_non_videos(t
     assert first.name in captured.out
     assert second.name in captured.out
     assert "notes" not in captured.out + captured.err
-    assert [path.name for path in probe.seen] == ["first.wav", "second.wav"]
+    assert sorted(path.name for path in probe.seen) == ["first.wav", "second.wav"]
     assert "2 subtitled, 0 skipped, 0 failed" in captured.out
     assert len(factory.calls) == 2
 
@@ -81,7 +50,7 @@ def test_subfolders_are_not_entered_by_default(tmp_path, capsys):
     (folder / "sub").mkdir(parents=True)
     _video(folder / "top.wav")
     _video(folder / "sub" / "nested.wav")
-    deps, factory, _ = _deps()
+    deps, factory, transcriber = _deps()
 
     code = run([str(folder)], deps)
 
@@ -92,7 +61,7 @@ def test_subfolders_are_not_entered_by_default(tmp_path, capsys):
     assert "top.wav" in captured.out
     assert "nested" not in captured.out
     assert len(factory.calls) == 1
-    assert len(factory.transcriber.seen) == 1
+    assert len(transcriber.seen) == 1
 
 
 def test_recursive_enters_subfolders_and_writes_each_sidecar_beside_its_video(tmp_path, capsys):

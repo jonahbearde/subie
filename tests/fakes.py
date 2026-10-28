@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -88,17 +90,40 @@ class FakeDeviceProbe:
 
 
 class FakeTranscriber:
-    """A Transcriber that returns a fixed Transcript and records the audio it saw."""
+    """A Transcriber that returns a fixed Transcript and records the audio it saw.
 
-    def __init__(self, transcript: Transcript | None = None) -> None:
+    ``delay_s`` holds every call for a controlled time, so a test can force Jobs to
+    overlap instead of racing the scheduler. ``in_flight`` and ``max_in_flight`` record
+    how many calls were inside :meth:`transcribe` at once. A test that needs one Video
+    to behave differently overrides :meth:`transcript_for`, which runs inside that same
+    counted, delayed call.
+    """
+
+    def __init__(self, transcript: Transcript | None = None, *, delay_s: float = 0.0) -> None:
         self.transcript = transcript or Transcript(segments=())
         self.error: Exception | None = None
+        self.delay_s = delay_s
         self.seen: list[Audio] = []
+        self.in_flight = 0
+        self.max_in_flight = 0
+        self._lock = threading.Lock()
 
     def transcribe(self, audio: Audio) -> Transcript:
-        self.seen.append(audio)
-        if self.error is not None:
-            raise self.error
+        with self._lock:
+            self.seen.append(audio)
+            self.in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            if self.delay_s:
+                time.sleep(self.delay_s)
+            if self.error is not None:
+                raise self.error
+            return self.transcript_for(audio)
+        finally:
+            with self._lock:
+                self.in_flight -= 1
+
+    def transcript_for(self, audio: Audio) -> Transcript:
         return self.transcript
 
 
