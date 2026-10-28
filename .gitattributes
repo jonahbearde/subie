@@ -1,0 +1,2 @@
+# Golden Sidecar fixtures are exact bytes: keep their CRLF line endings intact.
+tests/fixtures/**/*.srt -text whitespace=cr-at-eol

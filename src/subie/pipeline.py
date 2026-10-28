@@ -12,7 +12,8 @@ from subie.errors import SubieError, one_line
 from subie.hardware import resolve_device
 from subie.media import MediaError
 from subie.models import Model, default_for, load_error
-from subie.srt import cues_from_transcript, render_srt
+from subie.segment import cues_from_transcript
+from subie.srt import render_srt
 
 
 class JobError(SubieError):

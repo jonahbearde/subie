@@ -1,35 +1,10 @@
-"""Cue construction and SRT rendering.
-
-Ticket 02 deliberately builds one Cue per engine segment. Readability segmentation
-arrives with a later ticket; this module is the single place that changes then.
-"""
+"""SRT rendering. Cue construction lives in :mod:`subie.segment`."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 
-from subie.transcript import Transcript
-
-
-@dataclass(frozen=True)
-class Cue:
-    """One on-screen subtitle event."""
-
-    start: float
-    end: float
-    text: str
-
-
-def cues_from_transcript(transcript: Transcript) -> tuple[Cue, ...]:
-    """Build the naive Cue list: one Cue per non-empty engine segment."""
-    cues: list[Cue] = []
-    for segment in transcript.segments:
-        text = segment.text.strip()
-        if not text:
-            continue
-        cues.append(Cue(start=segment.start, end=segment.end, text=text))
-    return tuple(cues)
+from subie.segment import Cue
 
 
 def render_srt(cues: Sequence[Cue]) -> bytes:

@@ -1,0 +1,25 @@
+# 114 characters without clause punctuation; the 500 ms pause after "dog" splits it.
+S 0.0 7.4
+W 0.0 0.3 The
+W 0.3 0.6 quick
+W 0.6 0.9 brown
+W 0.9 1.2 fox
+W 1.2 1.5 jumps
+W 1.5 1.8 over
+W 1.8 2.1 the
+W 2.1 2.4 lazy
+W 2.4 2.7 dog
+W 2.7 3.0 while
+W 3.0 3.3 the
+W 3.3 3.6 tired
+W 3.6 3.9 dog
+W 4.4 4.7 sleeps
+W 4.7 5.0 under
+W 5.0 5.3 the
+W 5.3 5.6 old
+W 5.6 5.9 oak
+W 5.9 6.2 tree
+W 6.2 6.5 near
+W 6.5 6.8 the
+W 6.8 7.1 river
+W 7.1 7.4 bank.

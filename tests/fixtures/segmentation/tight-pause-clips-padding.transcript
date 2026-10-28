@@ -1,0 +1,25 @@
+# A 150 ms pause at the Cue boundary: the gap is reserved, the padding is what remains.
+S 0.0 7.05
+W 0.0 0.3 The
+W 0.3 0.6 quick
+W 0.6 0.9 brown
+W 0.9 1.2 fox
+W 1.2 1.5 jumps
+W 1.5 1.8 over
+W 1.8 2.1 the
+W 2.1 2.4 lazy
+W 2.4 2.7 dog,
+W 2.85 3.15 while
+W 3.15 3.45 the
+W 3.45 3.75 tired
+W 3.75 4.05 dog
+W 4.05 4.35 sleeps
+W 4.35 4.65 under
+W 4.65 4.95 the
+W 4.95 5.25 old
+W 5.25 5.55 oak
+W 5.55 5.85 tree
+W 5.85 6.15 near
+W 6.15 6.45 the
+W 6.45 6.75 river
+W 6.75 7.05 bank.

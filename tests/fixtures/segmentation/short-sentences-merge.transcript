@@ -1,0 +1,6 @@
+# Two short sentences; together they still fit one Cue's limits.
+S 0.0 1.5
+W 0.0 0.3 Hello
+W 0.3 0.6 there.
+W 0.9 1.2 General
+W 1.2 1.5 Kenobi.

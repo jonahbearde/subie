@@ -1,0 +1,8 @@
+# One 7.7-second sentence: the maximum duration splits it rather than letting it run.
+S 0.0 7.5
+W 0.0 1.2 This
+W 1.2 2.4 is
+W 2.4 3.6 a
+W 3.6 4.8 very
+W 4.8 6.0 slow
+W 6.3 7.5 sentence.

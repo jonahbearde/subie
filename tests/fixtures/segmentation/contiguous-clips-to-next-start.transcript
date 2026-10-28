@@ -1,0 +1,25 @@
+# A 50 ms pause: too short for a 100 ms gap, so padding fills it and the gap shrinks.
+S 0.0 6.95
+W 0.0 0.3 The
+W 0.3 0.6 quick
+W 0.6 0.9 brown
+W 0.9 1.2 fox
+W 1.2 1.5 jumps
+W 1.5 1.8 over
+W 1.8 2.1 the
+W 2.1 2.4 lazy
+W 2.4 2.7 dog,
+W 2.75 3.05 while
+W 3.05 3.35 the
+W 3.35 3.65 tired
+W 3.65 3.95 dog
+W 3.95 4.25 sleeps
+W 4.25 4.55 under
+W 4.55 4.85 the
+W 4.85 5.15 old
+W 5.15 5.45 oak
+W 5.45 5.75 tree
+W 5.75 6.05 near
+W 6.05 6.35 the
+W 6.35 6.65 river
+W 6.65 6.95 bank.
