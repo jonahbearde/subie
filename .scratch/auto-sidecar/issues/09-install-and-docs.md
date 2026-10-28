@@ -13,7 +13,7 @@ Status: done
 - [x] The subtitle policy document is linked from the README as the reference for cue limits, and its numbers match the implementation.
 - [x] `--keep-audio` is documented as the way to inspect what the engine actually heard.
 - [x] Exit codes and the skip/force behaviour are documented, with an example script that branches on the exit code.
-- [x] The four architecture decision records are consistent with the shipped behaviour, or amended where reality diverged.
+- [x] The architecture decision records (five since ticket 08 added ADR-0005) are consistent with the shipped behaviour, or amended where reality diverged.
 
 ## Comments
 
@@ -58,8 +58,10 @@ wins over padding).
 says the CUDA DLL directories are registered before CTranslate2 is imported (not "at
 import"), and records that the git-URL install needs Git while the ZIP path does not.
 ADR-0005's CPU default is written as the implemented `max(2, min(8, cores // 4))`. The
-spec's CLI surface no longer promises a progress indicator that was never built, and its
-exit-code line now includes an unready `doctor`.
+spec's CLI surface now describes the one-line-per-finished-Job output the tool actually
+prints (the promised progress indicator was never built), and its exit-code line includes
+an unready `doctor`. Spec story 34 now matches the shipped failure semantics for a Video
+with no audio stream: that is a failed Job, while silence or music is a skip.
 
 **Tests.** `tests/test_docs.py` guards the promises: the first console block is the
 zero-argument invocation; both install commands, `doctor`, `--device cuda` and the
@@ -71,8 +73,16 @@ is the documentation counterpart to the existing blocklist-is-documented test.
 
 **Verification.** `uv run pytest` (145 tests), `uv run mypy` and `uv run ruff check .`
 are clean. The direct-reference install syntax was resolved with
-`uv pip install --dry-run` for both the git URL and the `cuda` extra, and a wheel was
-installed into a temporary tool directory with `uv tool install` to prove the console
-script lands and runs. The GPU one-command path could not be installed end-to-end here
-without downloading the CUDA wheels; its syntax, extra resolution and the `doctor`
-behaviour it documents are covered by the checks above and the existing hardware tests.
+`uv pip install --dry-run` for both the git URL and the `cuda` extra. A built wheel was
+installed with `uv tool install` into a temporary `UV_TOOL_DIR`, and the resulting
+`subie --version` ran. The GPU extra itself was not downloaded and installed end to end
+here; its syntax and resolution are covered by the dry-run, and the `doctor` behaviour it
+documents is covered by the existing hardware tests.
+
+**Review.** Two-axis review found: a `models present` cache problem was described as making
+`doctor` not ready (it does not, and the wording is fixed); the GPU-ready sample looked like
+complete output (now labelled abridged with elided fields); "four" ADRs vs the five that
+exist; the README did not say that a no-audio Video is a failure rather than a skip; the
+README said the tool makes the *Transcript* readable (the glossary reserves Transcript for
+engine output, so it is now the Cue list); and duplicated install text in the README (now
+points at `docs/install.md` for the reinstall command and the no-Git path).

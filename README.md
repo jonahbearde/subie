@@ -48,29 +48,32 @@ Then verify the GPU path:
 subie doctor
 ```
 
-`subie doctor` downloads nothing. It prints one field per fact and ends with `result`. A
-working GPU machine reports:
+`subie doctor` downloads nothing. It prints one field per fact and ends with `result`. An
+abridged GPU-ready report:
 
 ```text
-device          cuda
-gpu             NVIDIA GeForce RTX 3070 Ti
-cuda libraries  cuBLAS resolved (…); cuDNN resolved (…)
-compute type    float16
-model           turbo (default for cuda)
-result          ready: the GPU path is usable
+subie doctor
+
+  python          …
+  ffmpeg          …
+  media probe     ok: read a 0.10 s test clip with an audio stream
+  device          cuda
+  gpu             NVIDIA GeForce RTX 3070 Ti
+  cuda libraries  cuBLAS resolved (…); cuDNN resolved (…)
+  compute type    float16
+  model           turbo (default for cuda)
+  model cache     …
+  models present  none
+  result          ready: the GPU path is usable
 ```
 
 If `doctor` reports the GPU path as unavailable:
 
 - **`gpu ... not usable` and `cuda libraries ... not resolved`.** The CUDA runtime wheels
-  are missing or a DLL failed to load. Reinstall with the extra, which is safe to repeat:
-
-  ```console
-  uv tool install --force "subie[cuda] @ git+https://github.com/jonahbearde/subie.git"
-  ```
-
-  The `cuda libraries` line names the DLL that failed. If it still fails, update the
-  NVIDIA driver and check that `nvidia-smi` lists the GPU.
+  are missing or a DLL failed to load. Reinstall with the same one-command install plus
+  `--force` (the exact line is in [`docs/install.md`](docs/install.md)). The
+  `cuda libraries` line names the DLL that failed. If it still fails, update the NVIDIA
+  driver and check that `nvidia-smi` lists the GPU.
 - **`gpu none visible`.** The driver does not expose an NVIDIA GPU to this machine. The
   CPU path still works: `device` will be `cpu` and the model `small.en`.
 - **`doctor` exits 0 when the CPU path is ready, even if the GPU is not.** For a script
@@ -79,10 +82,8 @@ If `doctor` reports the GPU path as unavailable:
   `--device cpu` accepts the CPU path on purpose.
 
 These commands use Git, which uv needs to fetch the repository. If Git is unavailable,
-download the repository ZIP from GitHub, extract it, and from the folder containing
-`pyproject.toml` run `uv tool install ".[cuda]"` for the GPU or `uv tool install .` for the
-CPU. [`docs/install.md`](docs/install.md) covers that path, offline machines, updating and
-more detailed troubleshooting.
+[`docs/install.md`](docs/install.md) gives the repository-ZIP and local-path install,
+offline model preparation, updating and more detailed troubleshooting.
 
 ### CPU-only machine
 
@@ -171,7 +172,8 @@ that a player would treat as a broken subtitle track.
   decoded.
 - `--force` ignores that freshness check and writes a fresh Sidecar.
 - A Video with no detected speech is skipped with a warning, writes nothing, and does not
-  make the Run fail.
+  make the Run fail. A Video with no audio stream is a failure, not a skip: it is reported
+  on stderr and the Run exits 1. Audio that is only silence or music is a skip.
 - A failed Job is reported on stderr and does not stop the other Jobs. A Run over more than
   one Video ends with `N subtitled, N skipped, N failed`.
 
@@ -228,7 +230,7 @@ Changing a number there is a behaviour change, not a tweak.
 ## Known limitations
 
 - **Proper nouns and names can be misheard.** There is no name correction and no editing
-  pass; the tool makes the transcript readable, not correct.
+  pass; the tool makes the Cues readable, not correct.
 - **Music, applause and heavy effects can confuse the engine.** Voice-activity detection
   and the phantom-phrase blocklist reduce invented lines, but cannot eliminate them. A
   confident-sounding invention can still survive.

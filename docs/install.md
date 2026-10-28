@@ -144,9 +144,10 @@ this state.
 ### `doctor` says `not ready` for another reason
 
 The `result` line names the failing field. A failed `media probe` or a failed device probe
-is an installation problem: reinstall the tool, then run `subie doctor` again. A `model
-cache` or `models present` problem is a cache-permissions problem; the path is printed so
-it can be inspected or removed.
+is an installation problem: reinstall the tool, then run `subie doctor` again. A `models
+present` value of `unavailable: …` is a cache-permissions problem; the `model cache` path
+is printed so it can be inspected or removed. It is reported in that field but does not by
+itself make `result` `not ready`.
 
 ## Preparing an offline machine
 
@@ -162,11 +163,11 @@ A Run uses a cached model without touching the network. If the model is missing 
 network is unavailable, the Run fails with a message naming the model and the cache path,
 rather than a download-library stack trace.
 
-To move a prepared cache to another machine, copy the whole `models--*` directories into the
-cache path printed by `doctor` on the target. The model files are platform-independent, but
-the Hugging Face cache may use symlinks, so use a copy that preserves them or copy the
-`blobs` directory as well. The CUDA wheels themselves are platform-specific, so install the
-tool with the `cuda` extra on the target rather than copying its virtual environment.
+To move a prepared cache to another machine, copy the whole `models--*` directories
+(including their `blobs` and `snapshots`) into the cache path printed by `doctor` on the
+target. The model files are platform-independent. The CUDA wheels themselves are
+platform-specific, so install the tool with the `cuda` extra on the target rather than
+copying its virtual environment.
 
 ## Updating and removing
 

@@ -79,6 +79,7 @@ def test_readme_documents_skip_force_and_exit_codes_with_a_script():
 
     assert "skipped (up to date)" in README
     assert "--force" in README
+    assert "no audio stream is a failure, not a skip" in README
     assert "exit code" in lowered
     for code in ("0", "1", "2"):
         assert re.search(rf"^\|\s*{code}\s*\|", README, re.MULTILINE), f"code {code} is missing"

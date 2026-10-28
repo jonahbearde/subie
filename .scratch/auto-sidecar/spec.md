@@ -136,8 +136,9 @@ It arrives on a machine with no Python and no ffmpeg installed, and tells me —
 
 ### Video handling
 
-34. As a person with a video containing no audio stream at all, I want a clear warning and a
-    skip, so that I'm not left wondering why nothing appeared.
+34. As a person with a video containing no audio stream at all, I want a clear error for
+    that Video and a failed Job, so that I'm not left wondering why nothing appeared, while
+    the other Videos in the Run continue.
 35. As a person with a video whose audio is entirely music or silence, I want a warning and
     no subtitle file at all, so that I don't end up with an empty file that a player treats
     as a broken subtitle track.
