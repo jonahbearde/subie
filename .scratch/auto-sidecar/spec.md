@@ -309,10 +309,10 @@ Run continues.
 - Positional paths: files or directories; directories non-recursive unless `-r`.
 - `--force`, `--out-dir`, `--jobs`, `--quiet`, `--verbose`, `--model`, `--device`.
 - `--keep-audio` to retain decoded audio for debugging; absent by default.
-- Exit codes: 0 success (including "all skipped"), 1 any Job failed, 2 usage error.
-- Human output: a progress indicator while a Job runs, then one summary line per Job, then a
-  Run summary when more than one Job ran. `--verbose` adds engine logs; `--quiet` leaves only
-  errors.
+- Exit codes: 0 success (including "all skipped"), 1 any Job failed or `doctor` found the
+  machine not ready, 2 usage error.
+- Human output: one summary line per Job as it finishes, then a Run summary when more than
+  one Job ran. `--verbose` adds engine logs; `--quiet` leaves only errors.
 - `doctor` reports the resolved device, the model that device would use, and the cache
   location. `models` works on that same cache and is device-independent: it lists what is
   present with sizes, pulls one ahead of time, and removes one.

@@ -24,8 +24,8 @@ context. Nothing model-shaped is shared.
 
 - Memory grows with `--jobs`: N models in RAM or VRAM. The defaults keep that sane — 1 on
   CUDA, where one model already saturates the GPU, and a small fraction of the cores on
-  CPU (`max(2, cores // 4)`, capped at 8). `--jobs` is the explicit trade, and its help
-  text says it costs memory.
+  CPU (`max(2, min(8, cores // 4))`). `--jobs` is the explicit trade, and its help text
+  says it costs memory.
 - A Sidecar's bytes never depend on `--jobs`. Segmentation is pure given a Transcript and
   each Job writes only its own Sidecar. Two Videos that would resolve to one Sidecar path
   are a usage error rather than a race, which is what makes that invariant hold.

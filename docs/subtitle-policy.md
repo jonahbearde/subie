@@ -17,8 +17,9 @@ A Cue must satisfy all of these, in this precedence order when they conflict:
 | Gap between cues | 100 ms | Stops players merging adjacent cues visually |
 | Trailing padding | 200 ms past last word | Perceptual comfort |
 
-When a sentence cannot fit within 2 × 42 characters at 20 CPS, split it — at a clause
-boundary, never mid-phrase.
+When a sentence cannot fit within 2 × 42 characters at 20 CPS, split it — at a sentence or
+clause boundary where one exists, otherwise at the longest pause or a balanced word
+boundary. The split is never mid-word.
 
 Reading speed is the Cue's characters divided by its on-screen duration (`out - in`), so the
 trailing padding and the 1 s minimum count as reading time.
@@ -30,12 +31,14 @@ trailing padding and the 1 s minimum count as reading time.
    limit. If the resulting Cue would exceed the reading-speed limit, split it at the best
    boundary below and repeat on each part; never stretch it.
 3. Prefer to break at, in order: sentence end (`.` `?` `!`), clause boundary (`,` `;` `:`),
-   the longest inter-word pause, then anywhere.
+   the longest inter-word pause, then a balanced word boundary.
 4. Never merge across a sentence end unless *both* sentences fit inside one cue's limits.
-5. `in` = first word's start; `out` = last word's end + 200 ms, clipped to
-   `next_in - 100 ms` to reserve the gap but never earlier than the last word's end. Where
-   the silence is shorter than the gap, `out` is clipped to `next_in` and the gap shrinks.
-   The 1 s minimum may extend `out` into the gap.
+5. `in` = first word's start; `out` = last word's end + 200 ms. It is clipped to
+   `next_in - 100 ms` to reserve the gap. Where that would fall before the last word's end
+   (overlapping word timings), `out` is clipped to `next_in` instead, because "out never
+   overlaps next cue's in" outranks the padding. Where the silence is shorter than the gap,
+   `out` is clipped to `next_in` and the gap shrinks. The 1 s minimum may extend `out` into
+   the gap.
 6. Balance the two lines rather than filling line 1 to 42 characters and leaving line 2
    with one word. A sentence or clause boundary is used for the line break only when the
    shorter line is at least half the longer line; otherwise balance at a word boundary.
@@ -84,12 +87,14 @@ is a behaviour change:
 - `HIGH_NO_SPEECH_PROB` = 0.6 — a Segment is low confidence at or above this no-speech
   probability.
 
-A Cue-sized range is low confidence only when *every* Segment it came from trips one of the
-two thresholds; a range the engine reported no confidence for at all counts as trusted,
-because deleting real speech is the worse failure. The guard runs on each sentence-sized
-range *before* neighbouring sentences are merged into one Cue, so a doubtful invention is
-dropped on its own and never takes the confident speech next to it down with it. A range is
-dropped when it is low confidence *and* its text matches a phantom phrase.
+A Cue-sized range is low confidence only when even its most generous reading trips a
+threshold: the range's highest average log-probability is at or below `LOW_AVG_LOGPROB`, or
+its lowest no-speech probability is at or above `HIGH_NO_SPEECH_PROB`. A range the engine
+reported no confidence for at all counts as trusted, because deleting real speech is the
+worse failure. The guard runs on each sentence-sized range *before* neighbouring sentences
+are merged into one Cue, so a doubtful invention is dropped on its own and never takes the
+confident speech next to it down with it. A range is dropped when it is low confidence
+*and* its text matches a phantom phrase.
 
 A Video with no detected speech produces a warning and no Sidecar — never an empty file.
 
