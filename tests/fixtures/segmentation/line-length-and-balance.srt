@@ -1,9 +1,9 @@
 1
 00:00:00,000 --> 00:00:04,100
 The quick brown fox jumps over
-the lazy dog while the tired dog
+the lazy dog while the tired dog.
 
 2
 00:00:04,400 --> 00:00:07,600
-sleeps under the old oak
+Sleeps under the old oak
 tree near the river bank.

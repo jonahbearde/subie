@@ -1,17 +1,20 @@
-"""Golden-file harness for readability segmentation.
+"""Golden-file harness: a fixture Transcript in, the exact Sidecar bytes out.
 
-A fixture Transcript lives beside the exact Sidecar bytes it must produce. The test
-drives the single seam — ``run(argv, deps)`` — rather than the segmenter's internals.
+A fixture lives beside the exact Sidecar bytes it must produce. Tests drive the single
+seam — ``run(argv, deps)`` — rather than the segmenter's internals.
 """
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from subie.cli import run
 from subie.exit_codes import EXIT_OK
+from subie.text import is_bracketed, is_music_only
 from subie.transcript import Segment, Transcript, Word
 from tests.fakes import (
     CPU_ONLY,
@@ -21,8 +24,6 @@ from tests.fakes import (
     make_deps,
 )
 from tests.wav import write_wav
-
-FIXTURES = Path(__file__).parent / "fixtures" / "segmentation"
 
 #: The policy's numbers, repeated here so that changing one in the code is a test diff.
 _LIMITS = {
@@ -34,10 +35,17 @@ _LIMITS = {
     "gap": 0.1,
 }
 
+#: The blocklist's thresholds, repeated for the same reason: the harness judges
+#: production against the policy, not against production's own idea of "doubtful".
+_CONFIDENCE = {"avg_logprob": -1.0, "no_speech_prob": 0.6}
 
-def fixture_cases() -> list[Path]:
-    """Every ``*.transcript`` fixture, in a stable order."""
-    return sorted(FIXTURES.glob("*.transcript"))
+#: What a Cue must show of a word, for a Cue's text to be matched back to its words.
+_TOKEN = re.compile(r"[^\W_]+")
+
+
+def fixture_cases(directory: Path) -> list[Path]:
+    """Every ``*.transcript`` fixture in ``directory``, in a stable order."""
+    return sorted(directory.glob("*.transcript"))
 
 
 def run_fixture(transcript_path: Path, tmp_path: Path, capsys) -> tuple[bytes, Transcript]:
@@ -63,44 +71,63 @@ def run_fixture(transcript_path: Path, tmp_path: Path, capsys) -> tuple[bytes, T
 
 
 def parse_transcript(text: str) -> Transcript:
-    """Read the compact fixture format: ``S start end`` and ``W start end text``."""
+    """Read the compact fixture format.
+
+    ``S start end [logprob=…] [no-speech=…]`` opens a Segment, ``W start end text``
+    adds a word, and ``T text`` gives the open Segment's text for a Segment whose
+    source reported no word timings.
+    """
     segments: list[Segment] = []
-    segment_start = 0.0
-    segment_end = 0.0
+    start = 0.0
+    end = 0.0
     words: list[Word] = []
-    seen_segment = False
+    spoken_text: str | None = None
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
+    open_segment = False
+
+    def close() -> None:
+        if not open_segment:
+            return
+        text = spoken_text if spoken_text is not None else " ".join(w.text.strip() for w in words)
+        segments.append(
+            Segment(
+                start=start,
+                end=end,
+                text=text,
+                words=tuple(words),
+                avg_logprob=avg_logprob,
+                no_speech_prob=no_speech_prob,
+            )
+        )
 
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        parts = line.split(maxsplit=3)
-        kind = parts[0]
+        kind, _, payload = line.partition(" ")
         if kind == "S":
-            if seen_segment:
-                segments.append(_segment(segment_start, segment_end, words))
-            segment_start = float(parts[1])
-            segment_end = float(parts[2])
+            close()
+            fields = payload.split()
+            start = float(fields[0])
+            end = float(fields[1])
+            options = dict(field.split("=", 1) for field in fields[2:])
             words = []
-            seen_segment = True
+            spoken_text = None
+            avg_logprob = float(options["logprob"]) if "logprob" in options else None
+            no_speech_prob = float(options["no-speech"]) if "no-speech" in options else None
+            open_segment = True
+        elif kind == "T":
+            spoken_text = payload
         elif kind == "W":
-            word_text = parts[3] if len(parts) > 3 else ""
-            words.append(Word(start=float(parts[1]), end=float(parts[2]), text=word_text))
+            fields = payload.split(maxsplit=2)
+            text = fields[2] if len(fields) > 2 else ""
+            words.append(Word(start=float(fields[0]), end=float(fields[1]), text=text))
         else:
             raise ValueError(f"unknown fixture line: {raw!r}")
 
-    if seen_segment:
-        segments.append(_segment(segment_start, segment_end, words))
+    close()
     return Transcript(segments=tuple(segments))
-
-
-def _segment(start: float, end: float, words: list[Word]) -> Segment:
-    return Segment(
-        start=start,
-        end=end,
-        text=" ".join(word.text.strip() for word in words),
-        words=tuple(words),
-    )
 
 
 def assert_sidecar_bytes(actual: bytes, expected: bytes, *, label: str) -> None:
@@ -134,60 +161,133 @@ def assert_sidecar_bytes(actual: bytes, expected: bytes, *, label: str) -> None:
     )
 
 
+@dataclass(frozen=True)
+class SpokenWord:
+    """One word a Cue could show, carrying the confidence of the Segment it came from."""
+
+    start: float
+    end: float
+    text: str
+    segment: Segment
+
+
+def transcript_words(transcript: Transcript) -> list[SpokenWord]:
+    """Flatten the Transcript into the words a Sidecar could display, in order.
+
+    Music-only words carry no speech, and a Segment without word timings is one
+    word-shaped piece of text, so both appear here the way the segmenter sees them.
+    """
+    words: list[SpokenWord] = []
+    for segment in transcript.segments:
+        if segment.words:
+            words.extend(
+                SpokenWord(word.start, word.end, word.text.strip(), segment)
+                for word in segment.words
+                if word.text.strip()
+            )
+        elif segment.text.strip():
+            words.append(SpokenWord(segment.start, segment.end, segment.text.strip(), segment))
+    return [word for word in words if not is_music_only(word.text)]
+
+
 def assert_readability(data: bytes, transcript: Transcript, *, label: str) -> None:
     """Check the Sidecar against the policy's external limits, Cue by Cue."""
     cues = _timed_cues(data)
     assert cues, f"{label}: no Cues"
-    words = [word for segment in transcript.segments for word in segment.words]
+    words = transcript_words(transcript)
     cursor = 0
 
     for index, (start, end, lines) in enumerate(cues):
         position = f"{label}: cue {index + 1} ({_timestamp(start)} --> {_timestamp(end)})"
-        assert 1 <= len(lines) <= _LIMITS["lines"], f"{position}: {len(lines)} lines"
-        for line in lines:
-            assert len(line) <= _LIMITS["line_chars"], f"{position}: line too long: {line!r}"
+        _assert_limits(position, start, end, lines)
 
-        duration = end - start
-        assert duration >= _LIMITS["min_duration"] - 0.002, f"{position}: {duration:.3f}s long"
-        assert duration <= _LIMITS["max_duration"] + 0.002, f"{position}: {duration:.3f}s long"
-
-        characters = len(" ".join(lines))
-        assert characters / duration <= _LIMITS["cps"] + 0.05, (
-            f"{position}: {characters / duration:.2f} CPS"
-        )
-
-        tokens = " ".join(lines).split(" ")
-        matched = words[cursor : cursor + len(tokens)]
-        if [word.text.strip() for word in matched] != tokens:
-            pytest.fail(
-                f"{label}: cue {index + 1} text does not match the Transcript words",
-                pytrace=False,
-            )
-        cursor += len(tokens)
-
-        first_word_start = matched[0].start
-        last_word_end = matched[-1].end
-        assert abs(start - first_word_start) <= 0.001, (
+        tokens = _tokens(" ".join(lines))
+        begin, stop = _match(words, cursor, tokens, position=position)
+        span = words[begin:stop]
+        assert abs(start - span[0].start) <= 0.001, (
             f"{position}: start is not the first word's start"
         )
-        assert end >= last_word_end - 0.001, f"{position}: ends before the last word"
+        assert end >= span[-1].end - 0.001, f"{position}: ends before the last word"
 
-        if cursor < len(words):
-            next_start = words[cursor].start
+        if stop < len(words):
+            next_start = words[stop].start
             assert end <= next_start + 0.001, f"{position}: overlaps the next Cue"
-            available = next_start - last_word_end
+            available = next_start - span[-1].end
             gap = next_start - end
             assert gap <= available + 0.001, f"{position}: gap exceeds the silence"
             if available >= _LIMITS["gap"] - 0.0005:
                 assert gap >= _LIMITS["gap"] - 0.002, (
                     f"{position}: gap to the next Cue is {gap:.3f}s"
                 )
-            if index + 1 < len(cues):
-                assert abs(cues[index + 1][0] - next_start) <= 0.001, (
-                    f"{position}: the next Cue does not start on its first word"
-                )
+        cursor = stop
 
-    assert cursor == len(words), f"{label}: not every Transcript word appears in a Cue"
+    dropped = [word.text for word in words[cursor:] if not _droppable(word)]
+    assert not dropped, f"{label}: words dropped without a rule: {dropped}"
+
+
+def _assert_limits(position: str, start: float, end: float, lines: list[str]) -> None:
+    assert 1 <= len(lines) <= _LIMITS["lines"], f"{position}: {len(lines)} lines"
+    for line in lines:
+        assert len(line) <= _LIMITS["line_chars"], f"{position}: line too long: {line!r}"
+
+    duration = end - start
+    assert duration >= _LIMITS["min_duration"] - 0.002, f"{position}: {duration:.3f}s long"
+    assert duration <= _LIMITS["max_duration"] + 0.002, f"{position}: {duration:.3f}s long"
+
+    characters = len(" ".join(lines))
+    assert characters / duration <= _LIMITS["cps"] + 0.05, (
+        f"{position}: {characters / duration:.2f} CPS"
+    )
+
+
+def _match(
+    words: list[SpokenWord],
+    cursor: int,
+    tokens: tuple[str, ...],
+    *,
+    position: str,
+) -> tuple[int, int]:
+    """The word span a Cue displays, skipping only words a rule is allowed to drop."""
+    for begin in range(cursor, len(words)):
+        skipped = words[cursor:begin]
+        if not all(_droppable(word) for word in skipped):
+            break
+        for stop in range(begin + 1, len(words) + 1):
+            if _kept_tokens(words[begin:stop]) != tokens:
+                continue
+            # Punctuation can be a word of its own: it belongs to the Cue it follows.
+            while stop < len(words) and _kept_tokens(words[begin : stop + 1]) == tokens:
+                stop += 1
+            return begin, stop
+    pytest.fail(
+        f"{position}: no run of Transcript words reads as {' '.join(tokens)!r}",
+        pytrace=False,
+    )
+
+
+def _kept_tokens(span: list[SpokenWord]) -> tuple[str, ...]:
+    """The tokens a Cue keeps from a span: markers survive only when nothing else does."""
+    if span and all(is_bracketed(word.text) for word in span):
+        return tuple(token for word in span for token in _tokens(word.text))
+    return tuple(
+        token for word in span if not is_bracketed(word.text) for token in _tokens(word.text)
+    )
+
+
+def _droppable(word: SpokenWord) -> bool:
+    return is_bracketed(word.text) or _low_confidence(word.segment)
+
+
+def _low_confidence(segment: Segment) -> bool:
+    logprob = segment.avg_logprob
+    no_speech = segment.no_speech_prob
+    return (logprob is not None and logprob <= _CONFIDENCE["avg_logprob"]) or (
+        no_speech is not None and no_speech >= _CONFIDENCE["no_speech_prob"]
+    )
+
+
+def _tokens(text: str) -> tuple[str, ...]:
+    return tuple(token.casefold() for token in _TOKEN.findall(text))
 
 
 def _parsed_cues(data: bytes) -> list[tuple[str, str, str]]:

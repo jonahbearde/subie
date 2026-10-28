@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from subie.transcript import Transcript, Word
+from subie.guard import is_phantom
+from subie.text import ends_clause, ends_sentence, is_bracketed, is_music_only, normalize
+from subie.transcript import Confidence, Transcript
 
 #: Readability limits. docs/subtitle-policy.md is the reference for their meaning.
 MAX_LINE_CHARS = 42
@@ -24,10 +26,6 @@ MAX_CUE_DURATION_S = 7.0
 TRAILING_PADDING_S = 0.2
 INTER_CUE_GAP_S = 0.1
 
-_SENTENCE_END = frozenset(".?!")
-_CLAUSE_END = frozenset(",;:")
-_CLOSERS = frozenset("\"')]}\u2019\u201d\u00bb")
-
 
 @dataclass(frozen=True)
 class Cue:
@@ -38,59 +36,113 @@ class Cue:
     text: str
 
 
+@dataclass(frozen=True)
+class _Spoken:
+    """A word, the confidence of the Segment it came from, and whether it stands alone.
+
+    ``standalone`` marks a word the engine emitted as a marker-only Segment: a
+    non-speech event of its own, which never merges into a neighbouring Cue.
+    """
+
+    start: float
+    end: float
+    text: str
+    confidence: Confidence
+    standalone: bool = False
+
+
 def cues_from_transcript(transcript: Transcript) -> tuple[Cue, ...]:
     """Build the readable Cue list for a Transcript.
 
     Sentence ends are treated as grouping opportunities, not as Cue boundaries: short
     sentences share a Cue when the combination still satisfies every limit, and long
-    ones are split at clause punctuation or at the longest pause.
+    ones are split at clause punctuation or at the longest pause. Every limit is
+    measured against the Cue's *cleaned* text, so a Cue that cleaning lengthens is
+    split rather than written oversized, and a Cue that ends up saying nothing is
+    dropped.
     """
     words = _speech_words(transcript)
     if not words:
         return ()
-    return tuple(
-        Cue(
-            start=words[first].start,
-            end=_timed_end(words, first, last),
-            text="\n".join(_line_break(_cue_text(words, first, last))),
+
+    cues: list[Cue] = []
+    for first, last in _cue_groups(words):
+        text = _display(words, first, last)
+        if text is None:
+            continue
+        cues.append(
+            Cue(
+                start=words[first].start,
+                end=_timed_end(words, first, last),
+                text="\n".join(_line_break(text)),
+            )
         )
-        for first, last in _cue_groups(words)
-    )
+    return tuple(cues)
 
 
-def _speech_words(transcript: Transcript) -> tuple[Word, ...]:
+def _speech_words(transcript: Transcript) -> tuple[_Spoken, ...]:
     """Flatten the engine's segments into the word stream segmentation works on.
 
-    A segment without word timings still yields one word, so a Transcript from a source
-    that omits them degrades to segment-shaped Cues instead of disappearing.
+    A Segment without word timings still yields one word, so a Transcript from a source
+    that omits them degrades to segment-shaped Cues instead of disappearing. Words that
+    are nothing but music notes carry no speech and never enter the stream.
     """
-    words: list[Word] = []
+    words: list[_Spoken] = []
     for segment in transcript.segments:
+        confidence = segment.confidence
         if segment.words:
+            spoken = [
+                (word, text)
+                for word in segment.words
+                if (text := word.text.strip()) and not is_music_only(text)
+            ]
+            standalone = bool(spoken) and all(is_bracketed(text) for _, text in spoken)
             words.extend(
-                Word(
+                _Spoken(
                     start=word.start,
                     end=word.end,
                     text=text,
-                    probability=word.probability,
+                    confidence=confidence,
+                    standalone=standalone,
                 )
-                for word in segment.words
-                if (text := word.text.strip())
+                for word, text in spoken
             )
             continue
         text = segment.text.strip()
-        if text:
-            words.append(Word(start=segment.start, end=segment.end, text=text))
+        if text and not is_music_only(text):
+            words.append(
+                _Spoken(
+                    start=segment.start,
+                    end=segment.end,
+                    text=text,
+                    confidence=confidence,
+                    standalone=is_bracketed(text),
+                )
+            )
     return tuple(words)
 
 
-def _cue_groups(words: tuple[Word, ...]) -> list[tuple[int, int]]:
-    """Choose inclusive word ranges for Cues, merging short sentences where allowed."""
+def _cue_groups(words: tuple[_Spoken, ...]) -> list[tuple[int, int]]:
+    """Choose inclusive word ranges for Cues, merging short sentences where allowed.
+
+    The phantom-phrase guard runs here, on each sentence range, before any merging: a
+    doubtful invention is dropped on its own, so it never takes confident speech with it.
+    """
     groups: list[tuple[int, int]] = []
     pending: tuple[int, int] | None = None
     for first, last in _sentences(words):
+        if _invented(words, first, last):
+            if pending is not None:
+                groups.append(pending)
+                pending = None
+            continue
         if _fits(words, first, last):
-            if pending is not None and _fits(words, pending[0], last):
+            if (
+                pending is not None
+                and not words[first].standalone
+                and not words[pending[0]].standalone
+                and _fits(words, pending[0], last)
+            ):
                 pending = (pending[0], last)
                 continue
             if pending is not None:
@@ -107,12 +159,17 @@ def _cue_groups(words: tuple[Word, ...]) -> list[tuple[int, int]]:
     return groups
 
 
-def _sentences(words: tuple[Word, ...]) -> list[tuple[int, int]]:
-    """Inclusive word ranges, split after each sentence-ending token."""
+def _sentences(words: tuple[_Spoken, ...]) -> list[tuple[int, int]]:
+    """Inclusive word ranges, split after each sentence end and around lone markers."""
     ranges: list[tuple[int, int]] = []
     first = 0
     for last, word in enumerate(words):
-        if _ends_sentence(word.text):
+        if word.standalone:
+            if first < last:
+                ranges.append((first, last - 1))
+            ranges.append((last, last))
+            first = last + 1
+        elif ends_sentence(word.text):
             ranges.append((first, last))
             first = last + 1
     if first < len(words):
@@ -120,25 +177,51 @@ def _sentences(words: tuple[Word, ...]) -> list[tuple[int, int]]:
     return ranges
 
 
-def _fits(words: tuple[Word, ...], first: int, last: int) -> bool:
+def _display(words: tuple[_Spoken, ...], first: int, last: int) -> str | None:
+    """The cleaned text this word range would show, or ``None`` if it shows nothing."""
+    return normalize(_cue_text(words, first, last))
+
+
+def _invented(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
+    """True when this sentence is an invention rather than something that was said."""
+    text = _display(words, first, last)
+    return text is not None and is_phantom(text, _confidence_of(words, first, last))
+
+
+def _confidence_of(words: tuple[_Spoken, ...], first: int, last: int) -> Confidence:
+    """The group's most generous reading: doubtful only when no part of it was sure."""
+    confidences = [word.confidence for word in words[first : last + 1]]
+    logprobs = [c.avg_logprob for c in confidences if c.avg_logprob is not None]
+    no_speech = [c.no_speech_prob for c in confidences if c.no_speech_prob is not None]
+    return Confidence(
+        avg_logprob=max(logprobs) if logprobs else None,
+        no_speech_prob=min(no_speech) if no_speech else None,
+    )
+
+
+def _fits(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
     return _fits_text_and_duration(words, first, last) and _fits_reading_speed(words, first, last)
 
 
-def _fits_text_and_duration(words: tuple[Word, ...], first: int, last: int) -> bool:
-    if _layout(_cue_text(words, first, last)) is None:
+def _fits_text_and_duration(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
+    text = _display(words, first, last)
+    if text is None or _layout(text) is None:
         return False
     duration = words[last].end + TRAILING_PADDING_S - words[first].start
     return duration <= MAX_CUE_DURATION_S
 
 
-def _fits_reading_speed(words: tuple[Word, ...], first: int, last: int) -> bool:
+def _fits_reading_speed(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
+    text = _display(words, first, last)
+    if text is None:
+        return False
     duration = _timed_end(words, first, last) - words[first].start
     if duration <= 0:
         return False
-    return len(_cue_text(words, first, last)) / duration <= MAX_READING_CPS
+    return len(text) / duration <= MAX_READING_CPS
 
 
-def _split(words: tuple[Word, ...], first: int, last: int) -> list[tuple[int, int]]:
+def _split(words: tuple[_Spoken, ...], first: int, last: int) -> list[tuple[int, int]]:
     """Split an over-long sentence by text capacity, then by reading speed."""
     groups: list[tuple[int, int]] = []
     for start, end in _capacity_groups(words, first, last):
@@ -146,7 +229,7 @@ def _split(words: tuple[Word, ...], first: int, last: int) -> list[tuple[int, in
     return groups
 
 
-def _capacity_groups(words: tuple[Word, ...], first: int, last: int) -> list[tuple[int, int]]:
+def _capacity_groups(words: tuple[_Spoken, ...], first: int, last: int) -> list[tuple[int, int]]:
     """Greedy fill by line count, line length and maximum duration."""
     groups: list[tuple[int, int]] = []
     start = first
@@ -161,7 +244,7 @@ def _capacity_groups(words: tuple[Word, ...], first: int, last: int) -> list[tup
     return groups
 
 
-def _max_capacity_end(words: tuple[Word, ...], first: int, last: int) -> int:
+def _max_capacity_end(words: tuple[_Spoken, ...], first: int, last: int) -> int:
     end = first
     for candidate in range(first, last + 1):
         if not _fits_text_and_duration(words, first, candidate):
@@ -170,7 +253,9 @@ def _max_capacity_end(words: tuple[Word, ...], first: int, last: int) -> int:
     return end
 
 
-def _reading_speed_groups(words: tuple[Word, ...], first: int, last: int) -> list[tuple[int, int]]:
+def _reading_speed_groups(
+    words: tuple[_Spoken, ...], first: int, last: int
+) -> list[tuple[int, int]]:
     """Split a Cue that would exceed the reading-speed limit; never stretch it."""
     if last <= first or _fits_reading_speed(words, first, last):
         return [(first, last)]
@@ -180,7 +265,7 @@ def _reading_speed_groups(words: tuple[Word, ...], first: int, last: int) -> lis
     )
 
 
-def _preferred_break(words: tuple[Word, ...], first: int, max_end: int) -> int:
+def _preferred_break(words: tuple[_Spoken, ...], first: int, max_end: int) -> int:
     """The best break point at or before ``max_end``, in policy precedence order."""
     if max_end <= first:
         return first
@@ -188,7 +273,7 @@ def _preferred_break(words: tuple[Word, ...], first: int, max_end: int) -> int:
     return max_end if boundary is None else boundary
 
 
-def _reading_speed_break(words: tuple[Word, ...], first: int, last: int) -> int:
+def _reading_speed_break(words: tuple[_Spoken, ...], first: int, last: int) -> int:
     """The best place to split a reading-speed offender, always before ``last``."""
     boundary = _last_boundary(words, first, last)
     if boundary is not None:
@@ -196,20 +281,20 @@ def _reading_speed_break(words: tuple[Word, ...], first: int, last: int) -> int:
     return _balanced_split(words, first, last)
 
 
-def _last_boundary(words: tuple[Word, ...], first: int, last: int) -> int | None:
+def _last_boundary(words: tuple[_Spoken, ...], first: int, last: int) -> int | None:
     """Latest sentence end, clause end, or longest pause strictly before ``last``."""
     if last <= first:
         return None
     for index in range(last - 1, first - 1, -1):
-        if _ends_sentence(words[index].text):
+        if ends_sentence(words[index].text):
             return index
     for index in range(last - 1, first - 1, -1):
-        if _ends_clause(words[index].text):
+        if ends_clause(words[index].text):
             return index
     return _longest_pause(words, first, last)
 
 
-def _longest_pause(words: tuple[Word, ...], first: int, last: int) -> int | None:
+def _longest_pause(words: tuple[_Spoken, ...], first: int, last: int) -> int | None:
     """The latest word before the longest positive inter-word pause."""
     best: int | None = None
     best_pause = 0.0
@@ -221,7 +306,7 @@ def _longest_pause(words: tuple[Word, ...], first: int, last: int) -> int | None
     return best
 
 
-def _balanced_split(words: tuple[Word, ...], first: int, last: int) -> int:
+def _balanced_split(words: tuple[_Spoken, ...], first: int, last: int) -> int:
     """The word boundary whose two halves differ least in characters."""
     best = first
     best_score: int | None = None
@@ -235,7 +320,7 @@ def _balanced_split(words: tuple[Word, ...], first: int, last: int) -> int:
     return best
 
 
-def _cue_text(words: tuple[Word, ...], first: int, last: int) -> str:
+def _cue_text(words: tuple[_Spoken, ...], first: int, last: int) -> str:
     return " ".join(word.text for word in words[first : last + 1])
 
 
@@ -252,8 +337,8 @@ def _line_break(text: str) -> tuple[str, ...]:
             continue
         candidates.append(
             (
-                not _ends_sentence(tokens[index - 1]),
-                not _ends_clause(tokens[index - 1]),
+                not ends_sentence(tokens[index - 1]),
+                not ends_clause(tokens[index - 1]),
                 abs(len(left) - len(right)),
                 abs(len(left) - len(text) / 2),
                 index,
@@ -290,7 +375,7 @@ def _layout(text: str) -> tuple[str, ...] | None:
     return lines
 
 
-def _timed_end(words: tuple[Word, ...], first: int, last: int) -> float:
+def _timed_end(words: tuple[_Spoken, ...], first: int, last: int) -> float:
     """The Cue's out: padding, the inter-Cue gap, and the one-second minimum."""
     start = words[first].start
     next_start = words[last + 1].start if last + 1 < len(words) else None
@@ -316,18 +401,3 @@ def _clipped_end(last_end: float, next_start: float | None) -> float:
     if room >= last_end:
         return min(padded, room)
     return min(padded, next_start)
-
-
-def _ends_sentence(text: str) -> bool:
-    return _last_significant(text) in _SENTENCE_END
-
-
-def _ends_clause(text: str) -> bool:
-    return _last_significant(text) in _CLAUSE_END
-
-
-def _last_significant(text: str) -> str:
-    for character in reversed(text):
-        if character not in _CLOSERS:
-            return character
-    return ""

@@ -1,9 +1,9 @@
 1
 00:00:00,000 --> 00:00:04,600
 The house at the end of the street,
-which had been empty for years,
+which had been empty for years.
 
 2
 00:00:04,800 --> 00:00:08,600
-was finally sold last spring,
+Was finally sold last spring,
 and the new owners moved in quickly.

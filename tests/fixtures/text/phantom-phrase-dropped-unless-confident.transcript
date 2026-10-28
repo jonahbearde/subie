@@ -1,0 +1,15 @@
+# Over music the engine invents "Thanks for watching". It is dropped on its own, so the
+# sentence after it survives, and the same words said confidently survive too.
+S 0.0 1.5 logprob=-1.6 no-speech=0.92
+W 0.0 0.5 Thanks
+W 0.5 1.0 for
+W 1.0 1.5 watching.
+S 2.0 3.4 logprob=-0.2 no-speech=0.02
+W 2.0 2.5 Okay
+W 2.5 2.9 listen
+W 2.9 3.4 up.
+S 8.0 9.2 logprob=-0.18 no-speech=0.02
+W 8.0 8.4 Thanks
+W 8.4 8.8 for
+W 8.8 9.2 watching,
+W 9.2 9.6 everyone.

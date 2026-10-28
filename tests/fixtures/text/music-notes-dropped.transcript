@@ -1,0 +1,8 @@
+# A Cue that is nothing but music notes never reaches the Sidecar.
+S 0.0 0.9
+W 0.0 0.3 ♪
+W 0.3 0.6 ♪♪
+W 0.6 0.9 ♪
+S 1.4 2.4
+W 1.4 1.9 Hello
+W 1.9 2.4 there.

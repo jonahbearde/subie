@@ -20,6 +20,14 @@ class Word:
 
 
 @dataclass(frozen=True)
+class Confidence:
+    """The engine's own doubt about a Segment, where ``None`` means it reported nothing."""
+
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
+
+
+@dataclass(frozen=True)
 class Segment:
     """One engine segment, including the words that made it up."""
 
@@ -29,6 +37,11 @@ class Segment:
     words: tuple[Word, ...] = ()
     avg_logprob: float | None = None
     no_speech_prob: float | None = None
+
+    @property
+    def confidence(self) -> Confidence:
+        """This Segment's doubt, as the hallucination blocklist reads it."""
+        return Confidence(avg_logprob=self.avg_logprob, no_speech_prob=self.no_speech_prob)
 
 
 @dataclass(frozen=True)

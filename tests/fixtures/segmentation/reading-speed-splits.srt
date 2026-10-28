@@ -1,7 +1,7 @@
 1
 00:00:00,000 --> 00:00:01,000
-The quick brown fox
+The quick brown fox.
 
 2
 00:00:01,100 --> 00:00:02,100
-jumps over the dog.
+Jumps over the dog.

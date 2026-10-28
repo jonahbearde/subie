@@ -42,12 +42,24 @@ trailing padding and the 1 s minimum count as reading time.
 
 ## Text normalization
 
-- Strip bare `♪` and cues consisting only of music notes — delete the cue entirely.
-- Keep bracketed non-speech markers (`[Music]`, `[Applause]`) only when the cue contains
-  nothing else; otherwise strip them from mixed speech.
-- Collapse repeated whitespace; remove space before punctuation; trim ends.
-- Capitalize the first character of the cue's first line; ensure terminal punctuation.
-  Leave Whisper's remaining casing untouched.
+Cleaning happens per Cue, after grouping and before line breaking, and every limit above
+is measured against the cleaned text. So a Cue that cleaning lengthens (a missing full
+stop costs a character) is re-checked and split rather than written oversized.
+
+- Strip bare `♪` and Cues consisting only of music notes — delete the Cue entirely. A word
+  that is nothing but notes never reaches a Cue in the first place.
+- Keep bracketed non-speech markers (`[Music]`, `[Applause]`) only when the Cue contains
+  nothing else; otherwise strip them from mixed speech. A marker-only Cue is shown exactly
+  as the engine wrote it: a marker is not a sentence, so it is neither capitalized nor
+  punctuated.
+- A marker the engine emitted as its own Segment is a Cue of its own and never merges with
+  the speech around it, so a `[Music]` at the start of a video survives as `[Music]`.
+- Collapse repeated whitespace; remove space before punctuation
+  (`,` `.` `;` `:` `?` `!` `…` `%`); trim ends.
+- Capitalize the Cue's first letter (stepping over a leading quote), and ensure terminal
+  punctuation: a missing stop is added, and a dangling `,` `;` `:` or dash becomes `.`.
+  Closing quotes and brackets stay outside the punctuation. A Cue that starts with a digit
+  has no letter to capitalize. Leave the engine's remaining casing untouched.
 - Keep fillers (`um`, `uh`) — removing them desyncs the meaning of the rest.
 
 ## Hallucination guards
@@ -57,8 +69,27 @@ default:
 
 - Silero VAD (`vad_filter=True`) so silence never reaches the decoder.
 - `condition_on_previous_text=False` so one bad segment cannot seed the next.
-- A small documented blocklist (`Thanks for watching`, `Subscribe to my channel`, …)
-  applied only to low-confidence cues, so genuine speech containing those phrases survives.
+- A small documented blocklist applied only to low-confidence Cues, so genuine speech
+  containing those phrases survives.
+
+The blocklist is data, in `src/subie/guard.py`. Changing either the list or the thresholds
+is a behaviour change:
+
+- `PHANTOM_PHRASES` — what the engine invents over music: `thanks for watching`,
+  `thank you for watching`, `thanks for watching and subscribing`, `please subscribe`,
+  `subscribe to my channel`, `like and subscribe`, `see you in the next video`. A phrase
+  matches case- and punctuation-insensitively, anywhere in the Cue.
+- `LOW_AVG_LOGPROB` = -1.0 — a Segment is low confidence at or below this average
+  log-probability.
+- `HIGH_NO_SPEECH_PROB` = 0.6 — a Segment is low confidence at or above this no-speech
+  probability.
+
+A Cue-sized range is low confidence only when *every* Segment it came from trips one of the
+two thresholds; a range the engine reported no confidence for at all counts as trusted,
+because deleting real speech is the worse failure. The guard runs on each sentence-sized
+range *before* neighbouring sentences are merged into one Cue, so a doubtful invention is
+dropped on its own and never takes the confident speech next to it down with it. A range is
+dropped when it is low confidence *and* its text matches a phantom phrase.
 
 A Video with no detected speech produces a warning and no Sidecar — never an empty file.
 

@@ -1,0 +1,11 @@
+# One Cue, four rules: a marker to strip, a comma to pull in, a lowercase start,
+# and a filler to keep.
+S 0.0 2.4
+W 0.0 0.3 [Music]
+W 0.3 0.7 so
+W 0.7 1.1 ,
+W 1.1 1.5 um
+W 1.5 1.9 this
+W 1.9 2.1 is
+W 2.1 2.4 it
+W 2.4 2.6 !

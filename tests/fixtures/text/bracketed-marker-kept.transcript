@@ -1,0 +1,7 @@
+# A marker the engine emitted on its own is kept, and never merges with the speech.
+S 0.0 1.2
+W 0.0 1.2 [Music]
+S 2.0 2.5
+W 2.0 2.5 Hello
+S 2.6 3.2
+W 2.6 3.2 there.

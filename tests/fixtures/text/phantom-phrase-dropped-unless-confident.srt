@@ -1,0 +1,7 @@
+1
+00:00:02,000 --> 00:00:03,600
+Okay listen up.
+
+2
+00:00:08,000 --> 00:00:09,800
+Thanks for watching, everyone.

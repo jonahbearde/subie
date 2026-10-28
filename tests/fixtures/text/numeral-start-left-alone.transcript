@@ -1,0 +1,6 @@
+# A Cue that starts with a digit has no lowercase start to fix; the stop is still added.
+S 0.0 1.6
+W 0.0 0.4 24
+W 0.4 0.8 hours
+W 0.8 1.2 went
+W 1.2 1.6 by

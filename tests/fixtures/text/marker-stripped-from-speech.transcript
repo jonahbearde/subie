@@ -1,0 +1,7 @@
+# A marker inside a Segment that also has speech is stripped; the speech stays.
+S 0.0 2.2
+W 0.0 0.4 [Applause]
+W 0.4 0.9 now
+W 0.9 1.4 the
+W 1.4 1.8 show
+W 1.8 2.2 begins.

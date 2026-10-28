@@ -6,6 +6,8 @@ same run is also checked against the policy's external limits, Cue by Cue.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from tests.golden import (
@@ -14,6 +16,8 @@ from tests.golden import (
     fixture_cases,
     run_fixture,
 )
+
+FIXTURES = Path(__file__).parent / "fixtures" / "segmentation"
 
 #: Every behaviour the ticket calls out has a fixture named here.
 BEHAVIOURS = {
@@ -32,11 +36,11 @@ BEHAVIOURS = {
 
 
 def test_every_behaviour_has_a_fixture():
-    present = {path.stem for path in fixture_cases()}
+    present = {path.stem for path in fixture_cases(FIXTURES)}
     assert present >= BEHAVIOURS
 
 
-@pytest.mark.parametrize("transcript_path", fixture_cases(), ids=lambda path: path.stem)
+@pytest.mark.parametrize("transcript_path", fixture_cases(FIXTURES), ids=lambda path: path.stem)
 def test_golden_sidecar(transcript_path, tmp_path, capsys):
     actual, transcript = run_fixture(transcript_path, tmp_path, capsys)
 
@@ -45,7 +49,7 @@ def test_golden_sidecar(transcript_path, tmp_path, capsys):
     assert_readability(actual, transcript, label=transcript_path.stem)
 
 
-@pytest.mark.parametrize("transcript_path", fixture_cases(), ids=lambda path: path.stem)
+@pytest.mark.parametrize("transcript_path", fixture_cases(FIXTURES), ids=lambda path: path.stem)
 def test_identical_transcripts_produce_identical_sidecars(transcript_path, tmp_path, capsys):
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
