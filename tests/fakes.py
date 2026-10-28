@@ -7,14 +7,14 @@ from pathlib import Path
 
 from subie.audio import Audio
 from subie.deps import Deps, Transcriber
-from subie.hardware import Hardware
+from subie.hardware import CudaLibrary, Hardware
 from subie.media import MediaInfo
 from subie.transcript import Segment, Transcript, Word
 
 #: A machine whose RTX 3070 Ti works: CUDA resolves and a device is visible.
 GPU_READY = Hardware(
     gpu_names=("NVIDIA GeForce RTX 3070 Ti",),
-    cuda_libraries_ok=True,
+    cuda_library_checks=(CudaLibrary("cuBLAS", True), CudaLibrary("cuDNN", True)),
     cuda_device_count=1,
     cuda_compute_types=("float16", "float32", "int8_float16"),
     cpu_compute_types=("float32", "int8", "int8_float32"),
@@ -25,7 +25,7 @@ CPU_ONLY = Hardware(cpu_compute_types=("float32", "int8", "int8_float32"))
 
 #: CUDA resolves, but there is no device: the libraries are not the problem.
 NO_GPU_LIBRARIES_OK = Hardware(
-    cuda_libraries_ok=True,
+    cuda_library_checks=(CudaLibrary("cuBLAS", True), CudaLibrary("cuDNN", True)),
     cuda_device_count=0,
     cuda_compute_types=("float16", "float32", "int8_float16"),
     cpu_compute_types=("float32", "int8", "int8_float32"),
@@ -34,9 +34,26 @@ NO_GPU_LIBRARIES_OK = Hardware(
 #: The dangerous case: a GPU the driver can see, whose CUDA libraries do not resolve.
 GPU_UNUSABLE = Hardware(
     gpu_names=("NVIDIA GeForce GT 710",),
-    cuda_libraries_ok=False,
-    cuda_library_error="Could not load library cudnn_ops_infer64_8.dll. Error code 126",
+    cuda_library_checks=(
+        CudaLibrary("cuBLAS", True),
+        CudaLibrary(
+            "cuDNN", False, "Could not load library cudnn_ops_infer64_8.dll. Error code 126"
+        ),
+    ),
     cuda_device_count=0,
+    cpu_compute_types=("float32", "int8", "int8_float32"),
+)
+
+#: A GPU the driver can see, with cuDNN installed but cuBLAS missing: the
+#: machine looks GPU-ready to CTranslate2 until inference actually starts.
+GPU_MISSING_CUBLAS = Hardware(
+    gpu_names=("NVIDIA GeForce RTX 3070 Ti",),
+    cuda_library_checks=(
+        CudaLibrary("cuBLAS", False, "Library cublas64_12.dll is not found or cannot be loaded"),
+        CudaLibrary("cuDNN", True),
+    ),
+    cuda_device_count=1,
+    cuda_compute_types=("float16", "int8_float16"),
     cpu_compute_types=("float32", "int8", "int8_float32"),
 )
 

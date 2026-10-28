@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import re
+import sys
 import wave
 
 import numpy as np
@@ -291,3 +293,24 @@ def test_a_video_with_no_speech_produces_no_empty_sidecar(tmp_path, capsys):
     assert code == EXIT_FAILED
     assert "no speech detected" in captured.err
     assert not (tmp_path / "talk.srt").exists()
+
+
+def test_the_summary_line_survives_a_legacy_windows_console_codepage(tmp_path, monkeypatch):
+    """The arrow must not crash a run whose output is redirected on Windows."""
+    video = tmp_path / "talk.wav"
+    _write_wav(video)
+    deps, _ = _deps(one_segment("Hello there."))
+    out_buffer = io.BytesIO()
+    err_buffer = io.BytesIO()
+    legacy_stdout = io.TextIOWrapper(out_buffer, encoding="cp1252", newline="")
+    legacy_stderr = io.TextIOWrapper(err_buffer, encoding="cp1252", newline="")
+    monkeypatch.setattr(sys, "stdout", legacy_stdout)
+    monkeypatch.setattr(sys, "stderr", legacy_stderr)
+
+    code = run([str(video)], deps)
+
+    legacy_stdout.flush()
+    legacy_stderr.flush()
+    assert code == EXIT_OK
+    assert err_buffer.getvalue() == b""
+    assert "\u2192" in out_buffer.getvalue().decode("utf-8")

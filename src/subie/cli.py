@@ -112,6 +112,7 @@ def build_sidecar_parser() -> _Parser:
 
 def run(argv: Sequence[str], deps: Deps) -> int:
     """Run one invocation and return its exit code. The seam every test goes through."""
+    _configure_output_encoding()
     argv = list(argv)
     if not argv:
         _print_usage_error(
@@ -144,6 +145,28 @@ def run(argv: Sequence[str], deps: Deps) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     return run(sys.argv[1:] if argv is None else argv, default_deps())
+
+
+def _configure_output_encoding() -> None:
+    """Write redirected output as UTF-8 so the summary arrow cannot crash a Run.
+
+    Windows uses the ANSI code page for a redirected stdout, where U+2192 is
+    unencodable. The Sidecar is already written by the time the summary line is
+    printed, so a failed print must not turn a success into a reported failure.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None:
+            continue
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
+        if encoding == "utf8":
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            continue
 
 
 def _parser_for(argv: list[str]) -> _Parser:

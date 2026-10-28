@@ -17,10 +17,10 @@ from subie.deps import Deps, MediaProbe
 from subie.errors import one_line
 from subie.exit_codes import EXIT_FAILED, EXIT_OK
 from subie.hardware import (
+    CudaLibrary,
     Device,
     Hardware,
     cuda_library_versions,
-    missing_library_from,
     resolve_device,
 )
 from subie.media import ffmpeg_summary
@@ -133,15 +133,25 @@ def _gpu_line(hardware: Hardware) -> str:
 
 
 def _cuda_line(hardware: Hardware) -> str:
-    if hardware.cuda_libraries_ok:
-        versions = cuda_library_versions()
-        return "resolved" + (f" ({', '.join(versions)})" if versions else "")
+    if hardware.cuda_library_checks:
+        parts = [_library_line(library) for library in hardware.cuda_library_checks]
+        if hardware.cuda_error:
+            parts.append(f"CTranslate2: {hardware.cuda_error}")
+        return "; ".join(parts)
     if hardware.gpu_names:
-        missing = missing_library_from(hardware.cuda_library_error or "")
-        if missing:
-            return f"not resolved: missing {missing}"
         return f"not resolved: {hardware.cuda_library_error or 'reason unknown'}"
     return "not needed (no GPU visible)"
+
+
+def _library_line(library: CudaLibrary) -> str:
+    if library.resolved:
+        version = _library_version(library.name)
+        return f"{library.name} resolved" + (f" ({version})" if version else "")
+    return f"{library.name} not resolved ({library.detail or 'reason unknown'})"
+
+
+def _library_version(name: str) -> str | None:
+    return cuda_library_versions().get(name)
 
 
 def _models_present_line() -> str:

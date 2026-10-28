@@ -50,7 +50,9 @@ def test_healthy_gpu_machine_reports_every_field_and_exits_zero(capsys, subie_ho
     assert _field(out, "device") == "cuda"
     assert "NVIDIA GeForce RTX 3070 Ti" in _field(out, "gpu")
     assert "not usable" not in _field(out, "gpu")
-    assert _field(out, "cuda libraries").startswith("resolved")
+    cuda = _field(out, "cuda libraries")
+    assert "cuBLAS resolved" in cuda
+    assert "cuDNN resolved" in cuda
     assert _field(out, "compute type") == "float16"
     assert _field(out, "model").startswith("turbo")
     assert _field(out, "model cache") == str(subie_home / "models")
@@ -80,8 +82,10 @@ def test_cpu_only_machine_reports_cuda_libraries_resolved_when_they_are(capsys):
     assert "Traceback" not in out + err
     assert _field(out, "gpu") == "none visible"
     assert _field(out, "device") == "cpu"
-    assert _field(out, "cuda libraries").startswith("resolved")
-    assert "not resolved" not in _field(out, "cuda libraries")
+    cuda = _field(out, "cuda libraries")
+    assert "cuBLAS resolved" in cuda
+    assert "cuDNN resolved" in cuda
+    assert "not resolved" not in cuda
     assert _field(out, "result").startswith("ready")
 
 
@@ -194,3 +198,18 @@ def test_media_probe_self_test_uses_a_real_decodable_clip(capsys):
     assert code == EXIT_OK
     assert "Traceback" not in out + err
     assert _field(out, "media probe").startswith("ok")
+
+
+def test_doctor_names_each_cuda_library_that_resolved_or_did_not(capsys):
+    from tests.fakes import GPU_MISSING_CUBLAS
+
+    code, out, err = _doctor(capsys, make_deps(hardware=GPU_MISSING_CUBLAS))
+
+    assert code == EXIT_OK  # the CPU path still works
+    assert "Traceback" not in out + err
+    assert _field(out, "device") == "cpu"
+    cuda = _field(out, "cuda libraries")
+    assert "cuBLAS not resolved" in cuda
+    assert "cublas64_12.dll" in cuda
+    assert "cuDNN resolved" in cuda
+    assert "GPU not usable" in _field(out, "result")
