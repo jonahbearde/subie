@@ -164,8 +164,8 @@ network is unavailable, the Run fails with a message naming the model and the ca
 rather than a download-library stack trace.
 
 To move a prepared cache to another machine, copy the whole `models--*` directories
-(including their `blobs` and `snapshots`) into the cache path printed by `doctor` on the
-target. The model files are platform-independent. The CUDA wheels themselves are
+(including their `blobs`, `snapshots` and `refs`) into the cache path printed by `doctor`
+on the target. The model files are platform-independent. The CUDA wheels themselves are
 platform-specific, so install the tool with the `cuda` extra on the target rather than
 copying its virtual environment.
 

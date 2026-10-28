@@ -120,13 +120,29 @@ def present_models(root: Path | None = None) -> tuple[Model, ...]:
 
 
 def _is_usable(directory: Path) -> bool:
-    snapshots = directory / "snapshots"
-    if not snapshots.is_dir():
+    """Whether the cache holds a snapshot the engine can resolve and load.
+
+    A snapshot directory alone is not enough: ``WhisperModel`` resolves the
+    repository's revision through ``refs/main``, and a download that died before
+    writing the ref leaves files that cannot be addressed. The same is true for a
+    half-finished download whose snapshot has no model files.
+    """
+    revision = _resolved_revision(directory)
+    if revision is None:
         return False
-    return any(
-        all((snapshot / name).is_file() for name in _REQUIRED_FILES)
-        for snapshot in snapshots.iterdir()
-    )
+    snapshot = directory / "snapshots" / revision
+    return all((snapshot / name).is_file() for name in _REQUIRED_FILES)
+
+
+def _resolved_revision(directory: Path) -> str | None:
+    """The revision ``refs/main`` names, when it names a snapshot that exists."""
+    try:
+        revision = (directory / "refs" / "main").read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not revision or not (directory / "snapshots" / revision).is_dir():
+        return None
+    return revision
 
 
 def model_size(model: Model, root: Path | None = None) -> int:

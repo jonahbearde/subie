@@ -91,8 +91,12 @@ def test_list_reports_each_model_present_with_its_size(capsys, subie_home):
 
 def test_a_model_that_is_not_usable_from_the_cache_is_not_listed(capsys, subie_home):
     cache = subie_home / "models"
-    snapshot = cache_path_for(SMALL_EN, cache) / "snapshots" / ("0" * 40)
+    directory = cache_path_for(SMALL_EN, cache)
+    snapshot = directory / "snapshots" / ("0" * 40)
     snapshot.mkdir(parents=True)
+    refs = directory / "refs"
+    refs.mkdir(parents=True)
+    (refs / "main").write_text("0" * 40, encoding="utf-8")
 
     # A directory with no snapshot in it, then a snapshot without a tokenizer, then
     # one with the files a load actually needs: only the last one counts.
@@ -108,6 +112,22 @@ def test_a_model_that_is_not_usable_from_the_cache_is_not_listed(capsys, subie_h
 
         assert code == EXIT_OK
         assert expected in out
+
+
+def test_a_snapshot_without_a_resolvable_ref_is_not_listed(capsys, subie_home):
+    """A download that died before writing refs/main cannot be addressed offline."""
+    cache = subie_home / "models"
+    snapshot = cache_path_for(SMALL_EN, cache) / "snapshots" / ("0" * 40)
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (snapshot / "model.bin").write_bytes(b"\0")
+
+    code, out, err = _models(capsys, make_deps(hardware=CPU_ONLY), "list")
+
+    assert code == EXIT_OK
+    assert err == ""
+    assert "none in the cache" in out
 
 
 def test_pull_downloads_a_model_that_then_appears_in_list(capsys, subie_home):

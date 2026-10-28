@@ -152,12 +152,21 @@ class FakeTranscriberFactory:
 
 
 def cached_model(cache: Path, repo_id: str, *, model_bytes: bytes = b"\0" * 4096) -> Path:
-    """Write the files a finished download leaves in the cache, and return the snapshot."""
-    snapshot = cache_path_for(repo_id, cache) / "snapshots" / ("0" * 40)
+    """Write the files a finished download leaves in the cache, and return the snapshot.
+
+    The ref is part of the real layout: it is how ``WhisperModel`` resolves a cached
+    repository when it is told not to touch the network.
+    """
+    directory = cache_path_for(repo_id, cache)
+    revision = "0" * 40
+    snapshot = directory / "snapshots" / revision
     snapshot.mkdir(parents=True, exist_ok=True)
     (snapshot / "config.json").write_text("{}", encoding="utf-8")
     (snapshot / "tokenizer.json").write_text("{}", encoding="utf-8")
     (snapshot / "model.bin").write_bytes(model_bytes)
+    refs = directory / "refs"
+    refs.mkdir(parents=True, exist_ok=True)
+    (refs / "main").write_text(f"{revision}\n", encoding="utf-8")
     return snapshot
 
 

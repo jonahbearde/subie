@@ -137,3 +137,13 @@ And a Run asked for a model that is neither cached nor pullable, with `--keep-au
 model error above appeared, exit 1, no Sidecar and no `*.keep-audio.wav` — nothing was
 decoded. `subie models rm tiny.en` then reported `removed tiny.en  74.5 MB`, `list` said
 `none in the cache`, and removing it again was a clear error.
+
+## Postscript
+
+Ticket 09's slow end-to-end run surfaced a cache-layout bug in this area:
+`present_models` accepted any snapshot directory with the required files, but
+`WhisperModel(local_files_only=True)` resolves a repository through `refs/main`. A
+snapshot without that ref was listed as cached and then failed to load offline.
+`models._is_usable` now requires `refs/main` to resolve to an existing snapshot with the
+required files; `tests/fakes.cached_model` writes the ref, and
+`test_a_snapshot_without_a_resolvable_ref_is_not_listed` covers the failure.

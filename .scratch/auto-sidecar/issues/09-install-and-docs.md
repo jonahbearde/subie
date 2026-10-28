@@ -71,13 +71,22 @@ the limitations name proper nouns, music, English-only and no translation; the p
 every ADR are linked; the policy's cue-limit table matches the segmenter constants. This
 is the documentation counterpart to the existing blocklist-is-documented test.
 
-**Verification.** `uv run pytest` (145 tests), `uv run mypy` and `uv run ruff check .`
-are clean. The direct-reference install syntax was resolved with
+**Verification.** `uv run pytest` (146 tests), `uv run pytest -m slow`, `uv run mypy` and
+`uv run ruff check .` are clean. The direct-reference install syntax was resolved with
 `uv pip install --dry-run` for both the git URL and the `cuda` extra. A built wheel was
 installed with `uv tool install` into a temporary `UV_TOOL_DIR`, and the resulting
 `subie --version` ran. The GPU extra itself was not downloaded and installed end to end
 here; its syntax and resolution are covered by the dry-run, and the `doctor` behaviour it
 documents is covered by the existing hardware tests.
+
+**Cache fix found by the slow suite.** The real end-to-end test failed on this machine's
+cache: `present_models` treated a snapshot with the required files as usable, then
+`WhisperModel(local_files_only=True)` could not resolve it because the cache had no
+`refs/main`. That is a real offline failure mode, not only a test artifact, so `_is_usable`
+now requires `refs/main` to name an existing snapshot with the required files. The test
+double writes the ref, a new test covers the no-ref snapshot, and the offline-copy note in
+`docs/install.md` includes `refs`. The slow end-to-end test now passes with the cached
+`tiny.en` model.
 
 **Review.** Two-axis review found: a `models present` cache problem was described as making
 `doctor` not ready (it does not, and the wording is fixed); the GPU-ready sample looked like
