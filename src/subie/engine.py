@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from subie.audio import Audio
-from subie.models import models_dir
+from subie.models import MODEL_FILES, model_cached, models_dir
 from subie.transcript import Segment, Transcript, Word
 
 #: English-only and transcription-only are code constants, not options (ADR-0003).
@@ -41,7 +42,9 @@ def make_transcriber(model: str, *, device: str, compute_type: str) -> FasterWhi
     """Build a faster-whisper engine for a resolved model id, device and compute type.
 
     ``model`` is a Hugging Face repo id from :mod:`subie.models`, never a user-facing
-    name. The model is downloaded into :func:`subie.models.models_dir` on first use.
+    name. A model already in :func:`subie.models.models_dir` is used from there without
+    touching the network, which is what makes ``subie models pull`` enough to prepare a
+    machine for offline use.
     """
     from faster_whisper import BatchedInferencePipeline, WhisperModel
 
@@ -50,11 +53,28 @@ def make_transcriber(model: str, *, device: str, compute_type: str) -> FasterWhi
         device=device,
         compute_type=compute_type,
         download_root=str(models_dir()),
+        local_files_only=model_cached(model),
     )
     # Batching is what makes a GPU run finish in well under real time (ADR-0002);
     # the CPU path keeps the simpler single-stream pipeline.
     engine = BatchedInferencePipeline(whisper) if device == "cuda" else whisper
     return FasterWhisperTranscriber(engine)
+
+
+def download_model(repo_id: str, *, destination: Path) -> None:
+    """Fetch a model repository into the cache, with the downloader's own progress bars.
+
+    The cache layout is Hugging Face's, because that is the layout
+    :class:`faster_whisper.WhisperModel` reads from the same directory. Progress goes to
+    stderr as the library prints it; nothing here has to know how large a model is.
+    """
+    from huggingface_hub import snapshot_download
+
+    snapshot_download(
+        repo_id,
+        cache_dir=str(destination),
+        allow_patterns=list(MODEL_FILES),
+    )
 
 
 def _segment(segment: Any) -> Segment:

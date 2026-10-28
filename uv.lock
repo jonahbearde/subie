@@ -770,6 +770,7 @@ source = { editable = "." }
 dependencies = [
     { name = "av" },
     { name = "faster-whisper" },
+    { name = "huggingface-hub" },
     { name = "numpy" },
 ]
 
@@ -790,6 +791,7 @@ dev = [
 requires-dist = [
     { name = "av", specifier = ">=14.0" },
     { name = "faster-whisper", specifier = ">=1.2" },
+    { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "nvidia-cublas-cu12", marker = "extra == 'cuda'", specifier = ">=12.4" },
     { name = "nvidia-cudnn-cu12", marker = "extra == 'cuda'", specifier = ">=9.0" },

@@ -19,6 +19,7 @@ from tests.fakes import (
     CPU_ONLY,
     GPU_READY,
     FakeMediaProbe,
+    FakeModelDownloader,
     FakeTranscriber,
     FakeTranscriberFactory,
     make_deps,
@@ -160,7 +161,10 @@ def test_no_temporary_audio_file_is_left_behind(tmp_path, capsys):
 
     assert run([str(video)], deps) == EXIT_OK
 
-    assert sorted(path.name for path in tmp_path.iterdir()) == ["talk.srt", "talk.wav"]
+    assert sorted(path.name for path in tmp_path.iterdir() if path.is_file()) == [
+        "talk.srt",
+        "talk.wav",
+    ]
 
 
 def test_keep_audio_retains_the_decoded_audio_in_a_predictable_place(tmp_path, capsys):
@@ -173,7 +177,7 @@ def test_keep_audio_retains_the_decoded_audio_in_a_predictable_place(tmp_path, c
     assert code == EXIT_OK
     kept = tmp_path / "talk.keep-audio.wav"
     assert kept.exists()
-    assert sorted(path.name for path in tmp_path.iterdir()) == [
+    assert sorted(path.name for path in tmp_path.iterdir() if path.is_file()) == [
         "talk.keep-audio.wav",
         "talk.srt",
         "talk.wav",
@@ -211,10 +215,10 @@ def test_audio_is_decoded_to_16k_mono_float32(tmp_path, capsys):
 def test_a_missing_model_with_no_network_names_the_model_and_cache(tmp_path, capsys, subie_home):
     video = tmp_path / "talk.wav"
     write_wav(video)
-    factory = FakeTranscriberFactory(
+    downloader = FakeModelDownloader(
         error=OSError("We couldn't connect to 'https://huggingface.co' to load this file")
     )
-    deps = make_deps(hardware=CPU_ONLY, transcriber_factory=factory)
+    deps = make_deps(hardware=CPU_ONLY, downloader=downloader)
 
     code = run([str(video)], deps)
 

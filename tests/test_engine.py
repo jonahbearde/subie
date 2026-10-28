@@ -9,6 +9,7 @@ import numpy as np
 
 from subie import engine, models
 from subie.audio import Audio
+from tests.fakes import cached_model
 
 
 class SpyWhisper:
@@ -70,8 +71,26 @@ def test_make_transcriber_passes_device_compute_type_and_the_one_model_cache(
         "device": "cpu",
         "compute_type": "int8",
         "download_root": str(subie_home / "models"),
+        "local_files_only": False,
     }
     assert models.models_dir() == subie_home / "models"
+
+
+def test_a_cached_model_is_loaded_without_touching_the_network(monkeypatch, subie_home):
+    import faster_whisper
+
+    cached_model(subie_home / "models", "Systran/faster-whisper-small.en")
+    seen: dict[str, Any] = {}
+
+    class RecordingModel:
+        def __init__(self, model: str, **kwargs: Any) -> None:
+            seen.update(kwargs)
+
+    monkeypatch.setattr(faster_whisper, "WhisperModel", RecordingModel)
+
+    engine.make_transcriber("Systran/faster-whisper-small.en", device="cpu", compute_type="int8")
+
+    assert seen["local_files_only"] is True
 
 
 def test_make_transcriber_uses_the_batched_pipeline_on_cuda(monkeypatch, subie_home):

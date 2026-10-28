@@ -11,7 +11,7 @@ from subie.deps import Deps, Transcriber
 from subie.errors import SubieError, one_line
 from subie.hardware import resolve_device
 from subie.media import MediaError
-from subie.models import Model, default_for, load_error
+from subie.models import Model, default_for, load_error, models_dir, present_models
 from subie.segment import cues_from_transcript
 from subie.srt import render_srt
 
@@ -58,6 +58,26 @@ def resolve_run_settings(
         raise JobError(f"the {device.name} device is not usable: {reason}")
     model = requested_model or default_for(device.name)
     return RunSettings(model=model, device=device.name, compute_type=device.compute_type)
+
+
+def ensure_model(deps: Deps, model: Model) -> None:
+    """Make a model available, and usable, before a Run decodes anything.
+
+    A model already in the cache costs nothing and touches no network. One that is not
+    is fetched here, so a missing model fails before a single frame is decoded rather
+    than after the first Video has been read.
+    """
+    if model in present_models():
+        return
+    try:
+        deps.download_model(model.repo_id, destination=models_dir())
+    except Exception as exc:
+        raise JobError(load_error(model, exc)) from None
+    if model not in present_models():
+        raise JobError(
+            f"model '{model.name}' ({model.repo_id}) was downloaded to {models_dir()}, "
+            "but is not usable from there"
+        )
 
 
 def validate_video(video: Path) -> None:

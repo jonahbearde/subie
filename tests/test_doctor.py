@@ -16,6 +16,7 @@ from tests.fakes import (
     FakeDeviceProbe,
     FakeMediaProbe,
     FakeTranscriberFactory,
+    cached_model,
     make_deps,
 )
 
@@ -173,15 +174,25 @@ def test_unknown_model_is_a_usage_error_and_starts_no_work(capsys):
 
 def test_models_present_lists_only_known_models_already_cached(capsys, subie_home):
     cache = subie_home / "models"
-    (cache / "models--Systran--faster-whisper-small.en").mkdir(parents=True)
-    (cache / "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo").mkdir()
-    (cache / "unrelated-download").mkdir()
+    cached_model(cache, "Systran/faster-whisper-small.en")
+    cached_model(cache, "mobiuslabsgmbh/faster-whisper-large-v3-turbo")
+    (cache / "models--someone--unrelated").mkdir(parents=True)
 
     code, out, err = _doctor(capsys, make_deps(hardware=CPU_ONLY))
 
     assert code == EXIT_OK
     assert "Traceback" not in out + err
     assert _field(out, "models present") == "small.en, turbo"
+
+
+def test_a_half_downloaded_model_is_not_reported_as_present(capsys, subie_home):
+    (subie_home / "models" / "models--Systran--faster-whisper-small.en").mkdir(parents=True)
+
+    code, out, err = _doctor(capsys, make_deps(hardware=CPU_ONLY))
+
+    assert code == EXIT_OK
+    assert "Traceback" not in out + err
+    assert _field(out, "models present") == "none"
 
 
 def test_media_probe_self_test_uses_a_real_decodable_clip(capsys):

@@ -260,7 +260,9 @@ Run continues.
   ADR-0003). There is no language detection, no `--lang`, no `--translate`.
 - Model resolution: model names map to a `faster-whisper` model id; download happens on
   first use into a predictable per-machine cache directory, with a clear error if the model
-  is absent and the network is unavailable.
+  is absent and the network is unavailable. `subie models` lists, pulls and removes models in
+  that same cache; a model already cached is used without touching the network, and a Run
+  makes sure its model is there before it decodes anything.
 
 ### Cue segmentation (the core logic)
 
@@ -311,8 +313,9 @@ Run continues.
 - Human output: a progress indicator while a Job runs, then one summary line per Job, then a
   Run summary when more than one Job ran. `--verbose` adds engine logs; `--quiet` leaves only
   errors.
-- `doctor` and `models` accept the same device/model resolution so they report what the tool
-  would actually do.
+- `doctor` reports the resolved device, the model that device would use, and the cache
+  location. `models` works on that same cache and is device-independent: it lists what is
+  present with sizes, pulls one ahead of time, and removes one.
 
 ### Packaging and native dependencies
 
@@ -346,9 +349,10 @@ One seam, at the top:
 run(argv, deps) -> exit code
 ```
 
-`deps` is the only thing replaced in tests and carries exactly two abilities: a factory that
-produces a Transcriber for a given model/device, and a media probe that reports a Video's
-duration and audio-stream presence. Everything else — argument parsing, device and model
+`deps` is the only thing replaced in tests and carries exactly the abilities that touch the
+outside world: a media probe that reports a Video's duration and audio-stream presence, a
+hardware probe that reports what the machine can accelerate with, a downloader that fetches
+one model into the cache, and a factory that produces a Transcriber for a given model/device. Everything else — argument parsing, device and model
 resolution, recognition options, cue segmentation, normalization, SRT rendering, skip and
 freshness logic, output paths, exit codes, reporter output, `doctor`, `models` — is the real
 code under test.

@@ -8,6 +8,16 @@ A command-line tool that writes English subtitles for English-language videos.
 An input media file with an audio stream, whose speech is assumed to be English.
 _Avoid_: clip, input, media file, source
 
+**Model**:
+A named recognition model, mapped to a `faster-whisper` repository. Present in the Model
+cache or not; a Run that needs one which is absent downloads it first.
+_Avoid_: weights, checkpoint, engine (the engine is faster-whisper itself)
+
+**Model cache**:
+The one per-machine directory models are downloaded into: reported by `subie doctor`,
+listed, filled and pruned by `subie models`, and read by a Run.
+_Avoid_: downloads folder, HF cache, model directory
+
 **Transcript**:
 The speech-recognition engine's raw output: words with timings, plus confidence. Never
 shown to a user directly; it is the material a Cue list is derived from.

@@ -23,6 +23,7 @@ def test_help_documents_every_command_and_flag(capsys):
     captured = capsys.readouterr()
     assert code == EXIT_OK
     assert "doctor" in captured.out
+    assert "models" in captured.out
     assert "--version" in captured.out
     assert "--help" in captured.out
     assert "--device" in captured.out
@@ -58,6 +59,34 @@ def test_doctor_help_documents_its_flags(capsys):
     assert code == EXIT_OK
     assert "--device" in captured.out
     assert "--model" in captured.out
+
+
+def test_models_help_documents_listing_pulling_and_removing(capsys):
+    code = run(["models", "--help"], make_deps())
+
+    captured = capsys.readouterr()
+    assert code == EXIT_OK
+    assert "list" in captured.out
+    assert "pull" in captured.out
+    assert "rm" in captured.out
+
+
+def test_models_pull_help_names_the_models_that_can_be_pulled(capsys):
+    code = run(["models", "pull", "--help"], make_deps())
+
+    captured = capsys.readouterr()
+    assert code == EXIT_OK
+    assert "NAME" in captured.out
+    assert "small.en" in captured.out
+    assert "turbo" in captured.out
+
+
+def test_models_pull_without_a_name_is_a_usage_error(capsys):
+    code = run(["models", "pull"], make_deps())
+
+    captured = capsys.readouterr()
+    assert code == EXIT_USAGE
+    assert "Traceback" not in captured.err
 
 
 def test_flags_before_a_command_still_run_the_command(capsys):

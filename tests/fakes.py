@@ -9,6 +9,7 @@ from subie.audio import Audio
 from subie.deps import Deps, Transcriber
 from subie.hardware import CudaLibrary, Hardware
 from subie.media import MediaInfo
+from subie.models import cache_path_for
 from subie.transcript import Segment, Transcript, Word
 
 #: A machine whose RTX 3070 Ti works: CUDA resolves and a device is visible.
@@ -125,16 +126,45 @@ class FakeTranscriberFactory:
         return self.transcriber
 
 
+def cached_model(cache: Path, repo_id: str, *, model_bytes: bytes = b"\0" * 4096) -> Path:
+    """Write the files a finished download leaves in the cache, and return the snapshot."""
+    snapshot = cache_path_for(repo_id, cache) / "snapshots" / ("0" * 40)
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (snapshot / "model.bin").write_bytes(model_bytes)
+    return snapshot
+
+
+@dataclass
+class FakeModelDownloader:
+    """A network that always succeeds, unless it is told to fail for a model."""
+
+    error: Exception | None = None
+    errors_by_repo: dict[str, Exception] = field(default_factory=dict)
+    model_bytes: bytes = b"\0" * 4096
+    calls: list[tuple[str, Path]] = field(default_factory=list)
+
+    def __call__(self, repo_id: str, *, destination: Path) -> None:
+        self.calls.append((repo_id, destination))
+        error = self.errors_by_repo.get(repo_id, self.error)
+        if error is not None:
+            raise error
+        cached_model(destination, repo_id, model_bytes=self.model_bytes)
+
+
 def make_deps(
     *,
     hardware: Hardware | None = None,
     device_probe: FakeDeviceProbe | None = None,
     media_probe: FakeMediaProbe | None = None,
+    downloader: FakeModelDownloader | None = None,
     transcriber_factory: FakeTranscriberFactory | None = None,
 ) -> Deps:
     return Deps(
         probe=media_probe or FakeMediaProbe(),
         device=device_probe or FakeDeviceProbe(hardware or Hardware()),
+        download_model=downloader or FakeModelDownloader(),
         make_transcriber=transcriber_factory or FakeTranscriberFactory(),
     )
 

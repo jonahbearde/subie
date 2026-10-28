@@ -138,9 +138,7 @@ def test_force_reprocesses_a_fresh_sidecar(tmp_path, capsys):
     assert code == EXIT_OK
     assert "1 cue" in captured.out
     assert len(factory.calls) == 1
-    assert sidecar.read_bytes() == (
-        b"1\r\n00:00:00,000 --> 00:00:01,700\r\nHello there.\r\n"
-    )
+    assert sidecar.read_bytes() == (b"1\r\n00:00:00,000 --> 00:00:01,700\r\nHello there.\r\n")
 
 
 def test_out_dir_places_every_sidecar_there_named_after_its_video(tmp_path, capsys):

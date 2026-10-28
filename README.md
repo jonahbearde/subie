@@ -3,8 +3,10 @@
 Writes English `.srt` subtitles for English-language videos.
 
 ```console
-subie video.mp4        # writes video.srt beside it
-subie doctor           # is this machine ready?
+subie video.mp4             # writes video.srt beside it
+subie doctor                # is this machine ready?
+subie models list           # what is in the model cache, and how large
+subie models pull small.en  # download a model before going offline
 ```
 
 See `.scratch/auto-sidecar/spec.md` for the full specification and `docs/` for the

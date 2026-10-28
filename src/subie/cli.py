@@ -19,6 +19,7 @@ from subie.pipeline import (
     JobError,
     JobSkipped,
     RunSettings,
+    ensure_model,
     resolve_run_settings,
     run_job,
 )
@@ -32,7 +33,7 @@ from subie.runs import (
 )
 
 #: The named commands. Anything else at argv[0] is a Video path (the default action).
-COMMANDS = ("doctor",)
+COMMANDS = ("doctor", "models")
 
 _HELP_TOKENS = ("-h", "--help")
 
@@ -118,7 +119,7 @@ def build_parser() -> _Parser:
             "With a Video path and no command, writes VIDEO.srt beside it."
         ),
         epilog=(
-            "Commands: doctor. "
+            "Commands: doctor, models. "
             "Exit codes: 0 success, 1 a failed Video or an unready machine, 2 usage error."
         ),
     )
@@ -135,7 +136,49 @@ def build_parser() -> _Parser:
             "anything."
         ),
     )
+    _add_models_commands(commands)
     return parser
+
+
+def _add_models_commands(commands: argparse._SubParsersAction) -> None:
+    """``subie models``: what is cached, what to fetch, what to delete."""
+    names = ", ".join(model.name for model in models.known_models())
+    models_command = commands.add_parser(
+        "models",
+        help="list, download and remove the recognition models",
+        description=(
+            "Work with the per-machine model cache: what is present and how large it "
+            "is, fetching a model before going offline, and deleting one."
+        ),
+        epilog=f"Known models: {names}.",
+    )
+    model_commands = models_command.add_subparsers(
+        dest="models_command", metavar="command", required=True
+    )
+    model_commands.add_parser(
+        "list",
+        help="show the models in the cache and their sizes",
+        description="Show the cache location and each model present in it.",
+    )
+    for command, help_text, description in (
+        (
+            "pull",
+            "download a model into the cache ahead of time",
+            "Download one model into the cache, so a later Run needs no network.",
+        ),
+        (
+            "rm",
+            "remove a model from the cache",
+            "Delete one model from the cache; a later Run will have to download it again.",
+        ),
+    ):
+        subcommand = model_commands.add_parser(
+            command,
+            help=help_text,
+            description=description,
+            epilog=f"Known models: {names}.",
+        )
+        subcommand.add_argument("name", metavar="NAME", help="a model name")
 
 
 def build_sidecar_parser() -> _Parser:
@@ -145,15 +188,13 @@ def build_sidecar_parser() -> _Parser:
         parents=[_common_parser()],
         description="Write a Sidecar beside each Video, or for every Video in a folder.",
         epilog=(
-            "Commands: doctor. Exit codes: 0 success (including everything skipped), "
+            "Commands: doctor, models. Exit codes: 0 success (including everything skipped), "
             "1 a failed Video, 2 usage error."
         ),
     )
     _add_keep_audio(parser)
     _add_run_flags(parser)
-    parser.add_argument(
-        "paths", nargs="+", metavar="VIDEO", help="a Video, or a folder of Videos"
-    )
+    parser.add_argument("paths", nargs="+", metavar="VIDEO", help="a Video, or a folder of Videos")
     return parser
 
 
@@ -181,6 +222,8 @@ def run(argv: Sequence[str], deps: Deps) -> int:
     try:
         if getattr(args, "command", None) == "doctor":
             return _doctor(args, deps)
+        if getattr(args, "command", None) == "models":
+            return _models(args, deps)
         return _sidecar(args, deps)
     except UsageError as exc:
         _print_usage_error(parser, str(exc))
@@ -240,14 +283,16 @@ def _first_positional(argv: list[str]) -> str | None:
     return None
 
 
-def _requested_model(name: str | None) -> Model | None:
-    if name is None:
-        return None
+def _required_model(name: str) -> Model:
     model = models.lookup(name)
     if model is None:
         names = ", ".join(model.name for model in models.known_models())
         raise UsageError(f"unknown model '{name}'; known models: {names}")
     return model
+
+
+def _requested_model(name: str | None) -> Model | None:
+    return None if name is None else _required_model(name)
 
 
 def _sidecar(args: argparse.Namespace, deps: Deps) -> int:
@@ -288,6 +333,9 @@ def _sidecar(args: argparse.Namespace, deps: Deps) -> int:
                         requested_device=args.device,
                         requested_model=requested_model,
                     )
+                    # The model must be in place before the first Video is decoded, so
+                    # an unpullable model costs nothing rather than a decode per Video.
+                    ensure_model(deps, settings.model)
                 except Exception as exc:
                     settings_failure = exc
                     reporter.error(exc)
@@ -382,9 +430,7 @@ def _prepare_out_dir(raw: str | None) -> Path | None:
 
 
 def _failed(video: Path, exc: BaseException, *, sidecar: Path | None = None) -> JobOutcome:
-    return JobOutcome(
-        video, JobStatus.FAILED, sidecar=sidecar, detail=one_line(exc)
-    )
+    return JobOutcome(video, JobStatus.FAILED, sidecar=sidecar, detail=one_line(exc))
 
 
 class _Reporter:
@@ -413,9 +459,7 @@ def _job_line(outcome: JobOutcome) -> str:
     sidecar = outcome.sidecar.name if outcome.sidecar else "?"
     if outcome.status is JobStatus.SUBTITLED:
         cues = "1 cue" if outcome.cues == 1 else f"{outcome.cues} cues"
-        return (
-            f"{outcome.video.name} \u2192 {sidecar}  {cues}  {outcome.elapsed_s:.1f}s"
-        )
+        return f"{outcome.video.name} \u2192 {sidecar}  {cues}  {outcome.elapsed_s:.1f}s"
     return f"{outcome.video.name} \u2192 {sidecar}  skipped ({outcome.detail or 'skipped'})"
 
 
@@ -457,8 +501,95 @@ def _doctor(args: argparse.Namespace, deps: Deps) -> int:
     return result.exit_code
 
 
+def _models(args: argparse.Namespace, deps: Deps) -> int:
+    command = getattr(args, "models_command", None)
+    if command == "pull":
+        return _models_pull(args.name, deps)
+    if command == "rm":
+        return _models_remove(args.name)
+    return _models_list()
+
+
+def _models_list() -> int:
+    cache = models.models_dir()
+    print("subie models")
+    print()
+    print(f"  cache  {cache}")
+    present = models.present_models()
+    if not present:
+        print("  none in the cache; pull one with 'subie models pull <name>'")
+        return EXIT_OK
+    rows: list[tuple[str, ...]] = [("model", "size", "repository")]
+    rows.extend((model.name, models.size_text(model), model.repo_id) for model in present)
+    print()
+    for line in _table_lines(rows):
+        print(f"  {line}")
+    return EXIT_OK
+
+
+def _table_lines(rows: list[tuple[str, ...]]) -> list[str]:
+    """Align rows into columns, without trailing whitespace to trip up a diff."""
+    widths = [max(len(row[index]) for row in rows) for index in range(len(rows[0]))]
+    return [
+        "  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip()
+        for row in rows
+    ]
+
+
+def _models_pull(name: str, deps: Deps) -> int:
+    model = _required_model(name)
+    cache = models.models_dir()
+    if model in models.present_models():
+        print(f"{model.name} is already in the cache at {cache} ({models.size_text(model)})")
+        return EXIT_OK
+
+    print(f"pulling {model.name} ({model.repo_id}) into {cache}", flush=True)
+    try:
+        deps.download_model(model.repo_id, destination=cache)
+    except Exception as exc:
+        _print_failure(models.pull_error(model, exc))
+        return EXIT_FAILED
+    if model not in models.present_models():
+        _print_failure(
+            f"the download of model '{model.name}' finished, but the cache at {cache} "
+            f"does not hold a usable model"
+        )
+        return EXIT_FAILED
+
+    print(f"pulled {model.name}  {models.size_text(model)}")
+    return EXIT_OK
+
+
+def _models_remove(name: str) -> int:
+    model = _required_model(name)
+    cache = models.models_dir()
+    try:
+        freed = models.remove_model(model)
+    except OSError as exc:
+        _print_failure(
+            f"cannot remove model '{model.name}' from the cache at {cache}: {exc.strerror or exc}"
+        )
+        return EXIT_FAILED
+    if freed is None:
+        _print_failure(f"model '{model.name}' is not in the cache at {cache}")
+        return EXIT_FAILED
+
+    print(f"removed {model.name}  {models.human_size(freed)}")
+    return EXIT_OK
+
+
 def _print_error(exc: BaseException) -> None:
-    print(f"subie: error: {one_line(exc)}", file=sys.stderr)
+    _print_failure(one_line(exc))
+
+
+def _print_failure(message: str) -> None:
+    """Report a failure on stderr, after whatever stdout already said.
+
+    stdout is buffered when it is redirected and stderr is not, so an error about the
+    line just printed would otherwise appear above that line.
+    """
+    sys.stdout.flush()
+    print(f"subie: error: {message}", file=sys.stderr)
 
 
 def _print_usage_error(
