@@ -282,7 +282,7 @@ def test_a_video_with_no_speech_produces_no_empty_sidecar(tmp_path, capsys):
     code = run([str(video)], deps)
 
     captured = capsys.readouterr()
-    assert code == EXIT_FAILED
+    assert code == EXIT_OK
     assert "no speech detected" in captured.err
     assert not (tmp_path / "talk.srt").exists()
 

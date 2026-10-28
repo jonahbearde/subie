@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from subie.cli import run
-from subie.exit_codes import EXIT_FAILED
+from subie.exit_codes import EXIT_OK
 from subie.guard import HIGH_NO_SPEECH_PROB, LOW_AVG_LOGPROB, PHANTOM_PHRASES
 from subie.transcript import Segment, Transcript, Word
 from tests.fakes import FakeTranscriber, FakeTranscriberFactory, make_deps
@@ -77,7 +77,7 @@ def test_a_transcript_of_only_music_produces_no_sidecar(tmp_path, capsys):
     code = run([str(video)], deps)
 
     captured = capsys.readouterr()
-    assert code == EXIT_FAILED
+    assert code == EXIT_OK
     assert "no speech detected" in captured.err
     assert not (tmp_path / "music.srt").exists()
 

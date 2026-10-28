@@ -20,6 +20,10 @@ class JobError(SubieError):
     """A Video could not be turned into a Sidecar."""
 
 
+class JobSkipped(SubieError):
+    """A Video produced no Sidecar, but nothing failed: there was no speech in it."""
+
+
 @dataclass(frozen=True)
 class RunSettings:
     """The model, device and compute type a Run resolves once for every Job."""
@@ -69,9 +73,14 @@ def run_job(
     settings: RunSettings,
     deps: Deps,
     *,
+    sidecar: Path | None = None,
     keep_audio: bool = False,
 ) -> JobResult:
-    """Turn one Video into a Sidecar, or raise :class:`JobError` with a readable reason."""
+    """Turn one Video into a Sidecar, or raise :class:`JobError` with a readable reason.
+
+    A Video whose audio contains no speech raises :class:`JobSkipped` instead: no
+    Sidecar is written, but the Run has not failed because of it.
+    """
     validate_video(video)
     started = time.perf_counter()
 
@@ -100,9 +109,9 @@ def run_job(
 
     cues = cues_from_transcript(transcript)
     if not cues:
-        raise JobError(f"no speech detected in {video.name}; no Sidecar written")
+        raise JobSkipped(f"no speech detected in {video.name}; no Sidecar written")
 
-    sidecar = video.with_suffix(".srt")
+    sidecar = sidecar or video.with_suffix(".srt")
     if sidecar == video:
         raise JobError(f"refusing to overwrite {video.name}: the Sidecar would be the Video")
     try:

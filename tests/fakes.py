@@ -62,13 +62,17 @@ GPU_MISSING_CUBLAS = Hardware(
 class FakeMediaProbe:
     info: MediaInfo = field(default_factory=lambda: MediaInfo(duration_s=0.1, has_audio=True))
     error: Exception | None = None
+    by_name: dict[str, MediaInfo] = field(default_factory=dict)
+    errors_by_name: dict[str, Exception] = field(default_factory=dict)
     seen: list[Path] = field(default_factory=list)
 
     def __call__(self, path: Path) -> MediaInfo:
         self.seen.append(path)
+        if path.name in self.errors_by_name:
+            raise self.errors_by_name[path.name]
         if self.error is not None:
             raise self.error
-        return self.info
+        return self.by_name.get(path.name, self.info)
 
 
 @dataclass

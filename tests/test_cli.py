@@ -28,6 +28,11 @@ def test_help_documents_every_command_and_flag(capsys):
     assert "--device" in captured.out
     assert "--model" in captured.out
     assert "--keep-audio" in captured.out
+    assert "-r" in captured.out
+    assert "--force" in captured.out
+    assert "--out-dir" in captured.out
+    assert "--quiet" in captured.out
+    assert "--verbose" in captured.out
 
 
 def test_sidecar_help_documents_the_default_action(capsys):
@@ -39,6 +44,11 @@ def test_sidecar_help_documents_the_default_action(capsys):
     assert "--device" in captured.out
     assert "--model" in captured.out
     assert "--keep-audio" in captured.out
+    assert "-r" in captured.out
+    assert "--force" in captured.out
+    assert "--out-dir" in captured.out
+    assert "--quiet" in captured.out
+    assert "--verbose" in captured.out
 
 
 def test_doctor_help_documents_its_flags(capsys):

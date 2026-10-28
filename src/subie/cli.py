@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Never
 
@@ -15,10 +17,18 @@ from subie.exit_codes import EXIT_FAILED, EXIT_OK, EXIT_USAGE
 from subie.models import Model
 from subie.pipeline import (
     JobError,
-    JobResult,
+    JobSkipped,
+    RunSettings,
     resolve_run_settings,
     run_job,
-    validate_video,
+)
+from subie.runs import (
+    JobOutcome,
+    JobStatus,
+    RunSummary,
+    is_fresh,
+    sidecar_for,
+    videos_in,
 )
 
 #: The named commands. Anything else at argv[0] is a Video path (the default action).
@@ -26,7 +36,7 @@ COMMANDS = ("doctor",)
 
 _HELP_TOKENS = ("-h", "--help")
 
-_VALUE_FLAGS = ("--device", "--model")
+_VALUE_FLAGS = ("--device", "--model", "--out-dir")
 
 
 class UsageError(Exception):
@@ -64,6 +74,36 @@ def _add_keep_audio(parser: _Parser) -> None:
     )
 
 
+def _add_run_flags(parser: _Parser) -> None:
+    """Flags that only the default action acts on, but that belong in its help."""
+    parser.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="also process Videos in subfolders",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="re-process Videos whose Sidecar is already up to date",
+    )
+    parser.add_argument(
+        "--out-dir",
+        metavar="DIR",
+        help="write every Sidecar into DIR instead of beside its Video",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="print errors only, suppressing per-Video lines and the Run summary",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="include the recognition engine's own logging",
+    )
+
+
 def build_parser() -> _Parser:
     """The help surface: named commands plus the default action's flags.
 
@@ -83,6 +123,7 @@ def build_parser() -> _Parser:
         ),
     )
     _add_keep_audio(parser)
+    _add_run_flags(parser)
     commands = parser.add_subparsers(dest="command", metavar="command")
     commands.add_parser(
         "doctor",
@@ -102,11 +143,17 @@ def build_sidecar_parser() -> _Parser:
     parser = _Parser(
         prog="subie",
         parents=[_common_parser()],
-        description="Write a Sidecar beside each Video.",
-        epilog=("Commands: doctor. Exit codes: 0 success, 1 a failed Video, 2 usage error."),
+        description="Write a Sidecar beside each Video, or for every Video in a folder.",
+        epilog=(
+            "Commands: doctor. Exit codes: 0 success (including everything skipped), "
+            "1 a failed Video, 2 usage error."
+        ),
     )
     _add_keep_audio(parser)
-    parser.add_argument("paths", nargs="+", metavar="VIDEO", help="a Video to subtitle")
+    _add_run_flags(parser)
+    parser.add_argument(
+        "paths", nargs="+", metavar="VIDEO", help="a Video, or a folder of Videos"
+    )
     return parser
 
 
@@ -205,38 +252,198 @@ def _requested_model(name: str | None) -> Model | None:
 
 def _sidecar(args: argparse.Namespace, deps: Deps) -> int:
     requested_model = _requested_model(args.model)
+    targets = _targets(args.paths, recursive=args.recursive)
+    if not targets:
+        return EXIT_OK
+    out_dir = _prepare_out_dir(args.out_dir)
 
-    videos: list[Path] = []
-    failed = False
-    for raw in args.paths:
-        video = Path(raw).expanduser()
-        try:
-            validate_video(video)
-        except JobError as exc:
-            _print_error(exc)
-            failed = True
-            continue
-        videos.append(video)
-    if not videos:
-        return EXIT_FAILED if failed else EXIT_OK
+    reporter = _Reporter(quiet=args.quiet)
+    outcomes: list[JobOutcome] = []
+    settings: RunSettings | None = None
+    settings_failure: BaseException | None = None
 
-    settings = resolve_run_settings(
-        deps, requested_device=args.device, requested_model=requested_model
+    with _engine_logging(args.verbose and not args.quiet):
+        for target in targets:
+            if target.error is not None:
+                reporter.error(target.error)
+                outcomes.append(_failed(target.video, target.error))
+                continue
+
+            sidecar = sidecar_for(target.video, out_dir)
+            if not args.force and is_fresh(target.video, sidecar):
+                outcome = JobOutcome(
+                    target.video, JobStatus.SKIPPED, sidecar=sidecar, detail="up to date"
+                )
+                outcomes.append(outcome)
+                reporter.job(outcome)
+                continue
+
+            if settings is None:
+                if settings_failure is not None:
+                    outcomes.append(_failed(target.video, settings_failure, sidecar=sidecar))
+                    continue
+                try:
+                    settings = resolve_run_settings(
+                        deps,
+                        requested_device=args.device,
+                        requested_model=requested_model,
+                    )
+                except Exception as exc:
+                    settings_failure = exc
+                    reporter.error(exc)
+                    outcomes.append(_failed(target.video, exc, sidecar=sidecar))
+                    continue
+
+            try:
+                result = run_job(
+                    target.video,
+                    settings,
+                    deps,
+                    sidecar=sidecar,
+                    keep_audio=args.keep_audio,
+                )
+            except JobSkipped as exc:
+                reporter.warning(exc)
+                outcomes.append(
+                    JobOutcome(
+                        target.video,
+                        JobStatus.SKIPPED,
+                        sidecar=sidecar,
+                        detail=one_line(exc),
+                    )
+                )
+                continue
+            except Exception as exc:
+                reporter.error(exc)
+                outcomes.append(_failed(target.video, exc, sidecar=sidecar))
+                continue
+
+            outcome = JobOutcome(
+                video=result.video,
+                status=JobStatus.SUBTITLED,
+                sidecar=result.sidecar,
+                cues=result.cues,
+                elapsed_s=result.elapsed_s,
+            )
+            outcomes.append(outcome)
+            reporter.job(outcome)
+
+    summary = RunSummary.of(outcomes)
+    if len(outcomes) > 1:
+        reporter.summary(summary)
+    return EXIT_FAILED if summary.any_failed else EXIT_OK
+
+
+@dataclass(frozen=True)
+class _Target:
+    """A path a Run must account for, or the reason it cannot be a Job."""
+
+    video: Path
+    error: JobError | None = None
+
+
+def _targets(raw_paths: Sequence[str], *, recursive: bool) -> list[_Target]:
+    """Expand folders into their Videos, keeping bad paths as reportable failures."""
+    targets: list[_Target] = []
+    for raw in raw_paths:
+        path = Path(raw).expanduser()
+        if path.is_dir():
+            try:
+                targets.extend(_Target(video) for video in videos_in(path, recursive=recursive))
+            except OSError as exc:
+                targets.append(
+                    _Target(
+                        path,
+                        JobError(f"cannot read folder {path}: {exc.strerror or exc}"),
+                    )
+                )
+        elif path.is_file():
+            targets.append(_Target(path))
+        elif not path.exists():
+            targets.append(_Target(path, JobError(f"video not found: {path}")))
+        else:
+            targets.append(_Target(path, JobError(f"not a Video file: {path}")))
+    return targets
+
+
+def _prepare_out_dir(raw: str | None) -> Path | None:
+    if raw is None:
+        return None
+    out_dir = Path(raw).expanduser()
+    if out_dir.exists() and not out_dir.is_dir():
+        raise UsageError(f"--out-dir is not a directory: {out_dir}")
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise UsageError(
+            f"cannot create output directory {out_dir}: {exc.strerror or exc}"
+        ) from None
+    return out_dir
+
+
+def _failed(video: Path, exc: BaseException, *, sidecar: Path | None = None) -> JobOutcome:
+    return JobOutcome(
+        video, JobStatus.FAILED, sidecar=sidecar, detail=one_line(exc)
     )
-    for video in videos:
-        try:
-            result = run_job(video, settings, deps, keep_audio=args.keep_audio)
-        except Exception as exc:
-            _print_error(exc)
-            failed = True
-            continue
-        print(_summary_line(result))
-    return EXIT_FAILED if failed else EXIT_OK
 
 
-def _summary_line(result: JobResult) -> str:
-    cues = "1 cue" if result.cues == 1 else f"{result.cues} cues"
-    return f"{result.video.name} \u2192 {result.sidecar.name}  {cues}  {result.elapsed_s:.1f}s"
+class _Reporter:
+    """The only place that decides what a Run's output looks like."""
+
+    def __init__(self, *, quiet: bool) -> None:
+        self.quiet = quiet
+
+    def job(self, outcome: JobOutcome) -> None:
+        if not self.quiet:
+            print(_job_line(outcome))
+
+    def warning(self, exc: BaseException) -> None:
+        if not self.quiet:
+            print(f"subie: warning: {one_line(exc)}", file=sys.stderr)
+
+    def error(self, exc: BaseException) -> None:
+        _print_error(exc)
+
+    def summary(self, summary: RunSummary) -> None:
+        if not self.quiet:
+            print(summary.line())
+
+
+def _job_line(outcome: JobOutcome) -> str:
+    sidecar = outcome.sidecar.name if outcome.sidecar else "?"
+    if outcome.status is JobStatus.SUBTITLED:
+        cues = "1 cue" if outcome.cues == 1 else f"{outcome.cues} cues"
+        return (
+            f"{outcome.video.name} \u2192 {sidecar}  {cues}  {outcome.elapsed_s:.1f}s"
+        )
+    return f"{outcome.video.name} \u2192 {sidecar}  skipped ({outcome.detail or 'skipped'})"
+
+
+@contextmanager
+def _engine_logging(enabled: bool) -> Iterator[None]:
+    """Route the recognition engine's logs to stderr for the duration of the Run."""
+    if not enabled:
+        yield
+        return
+
+    import logging
+
+    engine_loggers = [logging.getLogger(name) for name in ("faster_whisper", "ctranslate2")]
+    previous = [(logger.level, logger.propagate) for logger in engine_loggers]
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+    for logger in engine_loggers:
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+    try:
+        yield
+    finally:
+        for logger, (level, propagate) in zip(engine_loggers, previous, strict=True):
+            logger.removeHandler(handler)
+            logger.setLevel(level)
+            logger.propagate = propagate
+        handler.close()
 
 
 def _doctor(args: argparse.Namespace, deps: Deps) -> int:

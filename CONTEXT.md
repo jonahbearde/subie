@@ -20,8 +20,9 @@ boundaries the engine produced, so many Cues never match a Transcript segment 1:
 _Avoid_: line, caption, block, entry, subtitle event
 
 **Sidecar**:
-The `.srt` file this tool writes next to a Video, named after it. The only artifact
-produced. Bytes of the Video are never modified.
+The `.srt` file this tool writes for a Video, named after it. Beside the Video by
+default; `--out-dir` redirects it. The only artifact produced. Bytes of the Video are
+never modified.
 _Avoid_: subtitle file, output file, subs, captions file
 
 **Job**:
@@ -29,8 +30,14 @@ One Video's passage through the pipeline, from probe to written Sidecar. Fails a
 skips are per-Job and never abort the others.
 _Avoid_: task, item, unit of work, file
 
+**Skip**:
+A Job that wrote no Sidecar and did not fail: either a current Sidecar already existed
+or the Video's audio contained no speech. A Skip never makes a Run fail.
+_Avoid_: ignore, no-op
+
 **Run**:
-One invocation of the tool, covering zero or more Jobs, ending in a summary.
+One invocation of the tool, covering zero or more Jobs. It ends in a summary of
+subtitled, skipped, and failed counts when it covers more than one Video.
 _Avoid_: session, batch
 
 **Zero-arg Run**:
