@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 
+from subie.text import final_token
 from subie.transcript import Confidence
 
 #: Phrases the engine invents when it hears no speech. Lowercase and unpunctuated:
@@ -71,6 +72,11 @@ _WORD = re.compile(r"[^\W_]+")
 _PHANTOM_TOKENS: tuple[tuple[str, ...], ...] = tuple(
     tuple(word.casefold() for word in _WORD.findall(phrase)) for phrase in PHANTOM_PHRASES
 )
+
+
+def cannot_end_sentence(text: str) -> bool:
+    """True when the text's last token is one no English Sentence can end on."""
+    return final_token(text).casefold() in SENTENCE_FINAL_IMPOSSIBILITIES
 
 
 def is_low_confidence(confidence: Confidence) -> bool:

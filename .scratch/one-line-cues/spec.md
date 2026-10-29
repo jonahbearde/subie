@@ -375,3 +375,19 @@ approximately twice that, so it will be shrunk or hard-wrapped by the player. Th
 in exchange for never splitting a thought across lines, and it is the one number most likely to
 need revisiting after watching a few videos; it is a single value in the policy table and a single
 constant in the segmenter.
+## Comments
+
+### Implementation notes
+
+- **A spurious end also covers a pause.** Story 22 says a Sentence ending on `the` is not a
+  Sentence end; the engine can make that mistake with a pause as well as a stop, so the
+  repair joins pause-derived endings too. `pause-on-an-impossible-word-is-not-a-sentence-end`
+  covers it; the punctuation case is `article-final-stop-is-not-a-sentence-end`.
+- **Balance still gates clause and pause cuts.** A Sentence end always wins a cut. Clause
+  punctuation, pauses and word boundaries still require two halves of comparable size, or
+  the 140-character `Most commonly, …` sentence would cut at its first comma and leave a
+  13-character Fragment. The sample keeps its `location` / `over` cut, and
+  `lopsided-pair-cuts-at-the-sentence-end` pins the sentence-end exception.
+- **The sample after this change.** Regenerated: 183 Cues, none wrapped, longest exactly 90
+  characters, median 57. The four reported Cues read as the Solution describes, including
+  `the story forces the` / `audience into a sort of narrative claustrophobia.`

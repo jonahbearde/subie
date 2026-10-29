@@ -36,19 +36,21 @@ halving for one too long.
   watching a few videos; it is one row in `docs/subtitle-policy.md` and one constant
   (`MAX_LINE_CHARS`) in `src/subie/segment.py`.
 - A Cue that holds part of a Sentence keeps no capital it did not earn and no terminal stop
-  where the Sentence carries on. This deliberately reverses ADR 0006's promise that "the
-  first letter of a Cue is capitalized and the Cue ends in terminal punctuation, so that each
-  Cue reads as a sentence even when the split created it". A Fragment must not be dressed as
-  a whole sentence: a future reader who treats the Fragment rules as a bug against 0006
-  should read this record first.
+  where the Sentence carries on. This deliberately reverses the promise made when ADR 0006
+  was decided — user story 19 of `.scratch/one-sentence-per-cue/spec.md` asked for "the first
+  letter of a Cue capitalized and the Cue to end in terminal punctuation, so that each Cue
+  reads as a sentence even when the split created it". A Fragment must not be dressed as a
+  whole sentence: a future reader who treats the Fragment rules as a bug against 0006 should
+  read this record first.
 - The rescue threshold rises from 15 to 40 characters, so a 40-character scrap such as
   `Told within tight narrative constraints.` joins its neighbour instead of standing alone.
   A joined pair is still two Sentences: its internal full stop stays. Removing it would mean
   deciding that a participle fragment is not a sentence while `Right. Begin.` is two real
   short sentences — a comprehension judgement this tool does not make.
 - A small closed list of words that cannot end a Sentence repairs the engine's provably
-  spurious stops before any grouping or cutting. It is a certainty test, not a model and not
-  a threshold, and it lives beside the phantom-phrase blocklist in `src/subie/guard.py`.
+  spurious ends before any grouping or cutting, whether the engine ended the thought with a
+  stop or with a pause. It is a certainty test, not a model and not a threshold, and it lives
+  beside the phantom-phrase blocklist in `src/subie/guard.py`.
 - One line also removes the line-balance rule and `MIN_LINE_BALANCE`: a single line has
   nothing to balance. Balance survives only as a guard on cuts that are not at a Sentence
   end, which keeps badly lopsided Fragments out of the remaining cuts.

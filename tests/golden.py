@@ -14,11 +14,10 @@ import pytest
 
 from subie.cli import run
 from subie.exit_codes import EXIT_OK
-from subie.guard import SENTENCE_FINAL_IMPOSSIBILITIES
+from subie.guard import cannot_end_sentence
 from subie.text import (
     ALWAYS_CAPITALIZED,
     ends_sentence,
-    final_token,
     is_bracketed,
     is_music_only,
     normalize,
@@ -211,7 +210,7 @@ def assert_readability(data: bytes, transcript: Transcript, *, label: str) -> No
     sentences = _sentence_ranges(words)
     starts = frozenset(first for first, _ in sentences)
     ends = frozenset(last for _, last in sentences)
-    capitals = _capitals(words, _raw_sentence_ranges(words))
+    capitals = _capitals(words, _sentence_ranges(words, repair=False))
     cursor = 0
 
     for index, (start, end, lines) in enumerate(cues):
@@ -362,8 +361,13 @@ def _first_cased(text: str) -> str | None:
     return None
 
 
-def _sentence_ranges(words: list[SpokenWord]) -> list[tuple[int, int]]:
-    """The Sentence ranges the policy's own rule would find, spurious stops repaired."""
+def _sentence_ranges(words: list[SpokenWord], *, repair: bool = True) -> list[tuple[int, int]]:
+    """The Sentence ranges the policy's own rule would find.
+
+    With ``repair``, an end on a word no Sentence can end on is not an end while the
+    thought has somewhere to carry on. Without it, the ranges are what the engine's own
+    ends would give, which is how the capital whitelist is read.
+    """
     ranges: list[tuple[int, int]] = []
     first = 0
     for index, word in enumerate(words):
@@ -376,38 +380,21 @@ def _sentence_ranges(words: list[SpokenWord]) -> list[tuple[int, int]]:
                 ranges.append((first, index - 1))
             ranges.append((index, index))
             first = index + 1
-        elif (ends_sentence(word.text) and not _spurious_stop(word.text)) or paused:
-            ranges.append((first, index))
-            first = index + 1
-    if first < len(words):
-        ranges.append((first, len(words) - 1))
-    return ranges
-
-
-def _raw_sentence_ranges(words: list[SpokenWord]) -> list[tuple[int, int]]:
-    """The ranges before repair, so a capital after a spurious stop is not vouched for."""
-    ranges: list[tuple[int, int]] = []
-    first = 0
-    for index, word in enumerate(words):
-        paused = (
-            index + 1 < len(words)
-            and words[index + 1].start - word.end >= _LIMITS["sentence_pause"]
+            continue
+        if not (ends_sentence(word.text) or paused):
+            continue
+        carries_on = (
+            repair
+            and cannot_end_sentence(word.text)
+            and index + 1 < len(words)
+            and not is_bracketed(words[index + 1].text)
         )
-        if is_bracketed(word.text):
-            if first < index:
-                ranges.append((first, index - 1))
-            ranges.append((index, index))
-            first = index + 1
-        elif ends_sentence(word.text) or paused:
+        if not carries_on:
             ranges.append((first, index))
             first = index + 1
     if first < len(words):
         ranges.append((first, len(words) - 1))
     return ranges
-
-
-def _spurious_stop(text: str) -> bool:
-    return ends_sentence(text) and final_token(text).casefold() in SENTENCE_FINAL_IMPOSSIBILITIES
 
 
 def _capitals(words: list[SpokenWord], sentences: list[tuple[int, int]]) -> frozenset[str]:
@@ -434,18 +421,7 @@ def _assert_one_sentence(position: str, span: list[SpokenWord]) -> None:
 
 def _sentences(span: list[SpokenWord]) -> list[tuple[int, int]]:
     """The Sentence ranges the policy's own rule would find in a Cue's words."""
-    ranges: list[tuple[int, int]] = []
-    first = 0
-    for index, word in enumerate(span):
-        paused = (
-            index + 1 < len(span) and span[index + 1].start - word.end >= _LIMITS["sentence_pause"]
-        )
-        if (ends_sentence(word.text) and not _spurious_stop(word.text)) or paused:
-            ranges.append((first, index))
-            first = index + 1
-    if first < len(span):
-        ranges.append((first, len(span) - 1))
-    return ranges
+    return _sentence_ranges(span)
 
 
 def _slight(span: list[SpokenWord]) -> bool:

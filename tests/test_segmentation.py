@@ -36,6 +36,7 @@ BEHAVIOURS = {
     "pronoun-keeps-its-capital",
     "sentence-edge-of-a-fragment-keeps-its-stop",
     "article-final-stop-is-not-a-sentence-end",
+    "pause-on-an-impossible-word-is-not-a-sentence-end",
     # one Sentence per Cue, and the rescue for one too slight to stand alone
     "rescue-short-utterance-joins-forward",
     "rescue-short-utterance-joins-backward",

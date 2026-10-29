@@ -52,16 +52,17 @@ A silence ends a Sentence just as terminal punctuation does, but it is the weake
    at `.` `?` `!` (closing quotes and brackets handled as the text rules say) or at an
    inter-word silence of at least 500 ms. A Segment never has any bearing on where a Cue
    starts or ends.
-2. **Repair a provably spurious stop.** A Sentence that ends on a word no Sentence can end
-   on — an article, a preposition, a conjunction — was mis-punctuated by the engine. Its
-   stop is removed, the following word loses its capital (unless the whitelist below keeps
-   it), and the joined range is laid out again by the rules in this section. A spurious
-   stop is never a cut candidate. The closed word list is
+2. **Repair a provably spurious end.** A Sentence that ends on a word no Sentence can end
+   on — an article, a preposition, a conjunction — was broken by the engine, whether it put
+   a stop there or merely paused. A stop is removed, the following word loses its capital
+   (unless the whitelist below keeps it), and the joined range is laid out again by the
+   rules in this section. A spurious stop is never a cut candidate. The closed word list is
    `SENTENCE_FINAL_IMPOSSIBILITIES` in `src/subie/guard.py`, beside the phantom-phrase
    blocklist: `a` `an` `the` `of` `to` `by` `with` `from` `for` `in` `on` `at` `as`
    `into` `onto` `upon` `between` `against` `during` `within` `via` `per` `than` `and`
    `but` `or` `nor` `although` `unless` `whether` `whereas` `lest`. This is a certainty
-   test, not a threshold. A sentence may end on a noun and still look wrong; that case is
+   test, not a threshold: whenever the thought has somewhere to carry on and is not blocked
+   by a standalone marker. A sentence may end on a noun and still look wrong; that case is
    the rescue's job, below.
 3. One Sentence, one Cue. Two Sentences never share a Cue however much room is left.
 4. **Rescue.** A Sentence of 40 characters or fewer of text, or spanning under 1 s of

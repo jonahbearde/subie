@@ -12,12 +12,11 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 
-from subie.guard import SENTENCE_FINAL_IMPOSSIBILITIES, is_phantom
+from subie.guard import cannot_end_sentence, is_phantom
 from subie.text import (
     ALWAYS_CAPITALIZED,
     ends_clause,
     ends_sentence,
-    final_token,
     is_bracketed,
     is_music_only,
     lowercase_start,
@@ -156,9 +155,10 @@ def _repaired(
 ) -> tuple[tuple[_Spoken, ...], list[tuple[int, int]]]:
     """Join Sentences the engine ended on a word no Sentence can end on.
 
-    The stop after such a word is provably the engine's mistake, so it disappears, the
-    following word loses the capital the engine gave it, and the joined range is laid out
-    by the normal rules. A lone marker is never taken in: it is not part of the thought.
+    Such an end is provably the engine's mistake, whether it made it with a stop or with a
+    pause, so a stop disappears, the following word loses the capital the engine gave it,
+    and the joined range is laid out by the normal rules. A lone marker is never taken in:
+    it is not part of the thought.
     """
     sentences = _sentences(words)
     repaired: list[_Spoken] = list(words)
@@ -168,7 +168,7 @@ def _repaired(
         first, last = sentences[index]
         while index + 1 < len(sentences) and not repaired[last].standalone:
             next_first, next_last = sentences[index + 1]
-            if repaired[next_first].standalone or not _spurious_stop(repaired[last].text):
+            if repaired[next_first].standalone or not cannot_end_sentence(repaired[last].text):
                 break
             repaired[last] = replace(
                 repaired[last],
@@ -183,11 +183,6 @@ def _repaired(
         joined.append((first, last))
         index += 1
     return tuple(repaired), joined
-
-
-def _spurious_stop(text: str) -> bool:
-    """True when a Sentence's lone reason to end is a word no Sentence can end on."""
-    return ends_sentence(text) and final_token(text).casefold() in SENTENCE_FINAL_IMPOSSIBILITIES
 
 
 def _capitals(words: tuple[_Spoken, ...], sentences: list[tuple[int, int]]) -> frozenset[str]:
@@ -228,7 +223,7 @@ def _cue_groups(
         (first, last) for first, last in sentences if not _invented(words, first, last, context)
     ]
     groups: list[tuple[int, int]] = []
-    single: int | None = None
+    last_single: int | None = None
     index = 0
     while index < len(kept):
         first, last = kept[index]
@@ -236,21 +231,21 @@ def _cue_groups(
             next_first, next_last = kept[index + 1]
             if _joins_forward(words, first, last, next_first, next_last, context):
                 groups.append((first, next_last))
-                single = None
+                last_single = None
                 index += 2
                 continue
-        if _joins_backward(words, index, first, last, groups, single, context):
+        if _joins_backward(words, index, first, last, groups, last_single, context):
             groups[-1] = (groups[-1][0], last)
-            single = None
+            last_single = None
             index += 1
             continue
         groups.append((first, last))
-        single = index
+        last_single = index
         index += 1
 
     split: list[tuple[int, int]] = []
     for first, last in groups:
-        split.extend(_halves(words, first, last, context))
+        split.extend(_cut(words, first, last, context))
     return split
 
 
@@ -274,7 +269,7 @@ def _joins_backward(
     first: int,
     last: int,
     groups: list[tuple[int, int]],
-    single: int | None,
+    last_single: int | None,
     context: _Context,
 ) -> bool:
     """True when this Sentence should absorb the Sentence before it.
@@ -282,7 +277,7 @@ def _joins_backward(
     Only an untouched single-Sentence Cue can be absorbed: a rescue never grows into three
     Sentences.
     """
-    if not groups or single != index - 1:
+    if not groups or last_single != index - 1:
         return False
     previous_first = groups[-1][0]
     if words[first].standalone or words[previous_first].standalone:
@@ -400,15 +395,15 @@ def _fits_reading_speed(
     return len(text) / duration <= MAX_READING_CPS
 
 
-def _halves(
+def _cut(
     words: tuple[_Spoken, ...], first: int, last: int, context: _Context
 ) -> list[tuple[int, int]]:
-    """Halve a range over a limit until every part fits, or cannot be improved further."""
+    """Cut a range over a limit until every part fits, or cannot be improved further."""
     if last <= first:
         return [(first, last)]
     if not _fits_text_and_duration(words, first, last, context):
         middle = _midpoint_break(words, first, last)
-        return _halves(words, first, middle, context) + _halves(words, middle + 1, last, context)
+        return _cut(words, first, middle, context) + _cut(words, middle + 1, last, context)
     if _fits_reading_speed(words, first, last, context):
         return [(first, last)]
     cut = _readable_break(words, first, last, context)
