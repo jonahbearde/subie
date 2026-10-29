@@ -1,0 +1,7 @@
+1
+00:00:00,000 --> 00:00:02,400
+The board approved the plan this morning, unanimously
+
+2
+00:00:02,400 --> 00:00:06,800
+after a long discussion about the budget and the timeline for the new building.

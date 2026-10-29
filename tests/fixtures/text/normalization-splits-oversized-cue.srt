@@ -1,8 +1,7 @@
 1
 00:00:00,000 --> 00:00:02,400
-The operator checked the calibration rig.
+The operator checked the calibration rig twice and
 
 2
-00:00:02,400 --> 00:00:06,000
-Twice and then wrote
-the number down again.
+00:00:02,400 --> 00:00:05,600
+then wrote the number down again before the shift ended.

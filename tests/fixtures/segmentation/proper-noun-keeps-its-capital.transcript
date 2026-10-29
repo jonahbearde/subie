@@ -1,0 +1,28 @@
+# The cut lands before a proper noun the Transcript capitalizes mid-Sentence, so the
+# Fragment keeps its capital.
+S 0.000 8.000
+W 0.000 0.320 The
+W 0.320 0.640 committee
+W 0.640 0.960 gathered
+W 0.960 1.280 early
+W 1.280 1.600 in
+W 1.600 1.920 the
+W 1.920 2.240 morning
+W 2.240 2.560 and
+W 2.560 2.880 waited
+W 2.880 3.200 very
+W 3.200 3.520 patiently
+W 3.520 3.840 for
+W 3.840 4.160 Tuesday
+W 4.160 4.480 afternoon
+W 4.480 4.800 to
+W 4.800 5.120 arrive
+W 5.120 5.440 before
+W 5.440 5.760 they
+W 5.760 6.080 began
+W 6.080 6.400 the
+W 6.400 6.720 meeting
+W 6.720 7.040 in
+W 7.040 7.360 the
+W 7.360 7.680 main
+W 7.680 8.000 hall.

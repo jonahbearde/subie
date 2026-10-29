@@ -1,0 +1,21 @@
+# A rescued pair too long for one line is cut at its Sentence end: the second Cue
+# closes the Sentence, so it keeps its stop.
+S 0.000 0.300
+W 0.000 0.300 Yes.
+S 0.500 5.300
+W 0.500 0.800 The
+W 0.800 1.100 engine
+W 1.100 1.400 is
+W 1.400 1.700 running
+W 1.700 2.000 and
+W 2.000 2.300 the
+W 2.300 2.600 brakes
+W 2.600 2.900 have
+W 2.900 3.200 been
+W 3.200 3.500 checked
+W 3.500 3.800 twice
+W 3.800 4.100 by
+W 4.100 4.400 the
+W 4.400 4.700 mechanic
+W 4.700 5.000 this
+W 5.000 5.300 morning.

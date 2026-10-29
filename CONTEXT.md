@@ -35,11 +35,17 @@ from.
 _Avoid_: clause, fragment, phrase
 
 **Cue**:
-One on-screen subtitle event — a start time, an end time, and at most two lines of text.
-The unit that is written to a Sidecar. A Cue is one Sentence shaped by readability — split
-if it is too long, joined to a neighbour only if it is too slight to stand alone — so many
-Cues never match a Segment 1:1.
-_Avoid_: line, caption, block, entry, subtitle event
+One on-screen subtitle event — a start time, an end time, and one line of text. The unit
+that is written to a Sidecar. A Cue is one Sentence shaped by readability — split if it is
+too long, joined to a neighbour only if it is too slight to stand alone — so many Cues
+never match a Segment 1:1.
+_Avoid_: caption, block, entry, subtitle event
+
+**Fragment**:
+A Cue that holds part of a Sentence because the Sentence was cut. A Fragment reads as
+unfinished where the Sentence is unfinished: no capital it did not earn, no terminal stop
+where the thought carries on.
+_Avoid_: clause, partial cue, split sentence
 
 **Sidecar**:
 The `.srt` file this tool writes for a Video, named after it. Beside the Video by

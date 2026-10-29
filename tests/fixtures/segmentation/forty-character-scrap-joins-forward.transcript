@@ -1,0 +1,16 @@
+# A Sentence of exactly 40 characters is too slight to stand alone, so it absorbs
+# the Sentence after it; the pair still fits one line of 90.
+S 0.000 2.000
+W 0.000 0.400 Told
+W 0.400 0.800 within
+W 0.800 1.200 tight
+W 1.200 1.600 narrative
+W 1.600 2.000 constraints.
+S 2.400 5.200
+W 2.400 2.800 A
+W 2.800 3.200 contained
+W 3.200 3.600 story
+W 3.600 4.000 is
+W 4.000 4.400 essentially
+W 4.400 4.800 any
+W 4.800 5.200 narrative.

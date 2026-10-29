@@ -1,0 +1,11 @@
+1
+00:00:00,000 --> 00:00:04,880
+The engine started on the first try, but the brakes were completely dead.
+
+2
+00:00:05,080 --> 00:00:08,880
+The committee met on Tuesday afternoon to discuss the proposal.
+
+3
+00:00:09,080 --> 00:00:13,600
+Most commonly, this involves the story taking place in one primary location.

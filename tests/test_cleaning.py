@@ -13,7 +13,12 @@ import pytest
 
 from subie.cli import run
 from subie.exit_codes import EXIT_OK
-from subie.guard import HIGH_NO_SPEECH_PROB, LOW_AVG_LOGPROB, PHANTOM_PHRASES
+from subie.guard import (
+    HIGH_NO_SPEECH_PROB,
+    LOW_AVG_LOGPROB,
+    PHANTOM_PHRASES,
+    SENTENCE_FINAL_IMPOSSIBILITIES,
+)
 from subie.transcript import Segment, Transcript, Word
 from tests.fakes import FakeTranscriber, FakeTranscriberFactory, make_deps
 from tests.golden import (
@@ -91,3 +96,11 @@ def test_the_blocklist_and_its_thresholds_are_documented():
         assert name in policy, f"the policy does not name {name}"
     assert str(LOW_AVG_LOGPROB) in policy
     assert str(HIGH_NO_SPEECH_PROB) in policy
+
+
+def test_the_sentence_final_impossibilities_are_documented():
+    policy = POLICY.read_text(encoding="utf-8")
+
+    assert "SENTENCE_FINAL_IMPOSSIBILITIES" in policy
+    for word in SENTENCE_FINAL_IMPOSSIBILITIES:
+        assert f"`{word}`" in policy, f"the policy does not document {word!r}"

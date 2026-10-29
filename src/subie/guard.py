@@ -23,6 +23,45 @@ PHANTOM_PHRASES: tuple[str, ...] = (
     "see you in the next video",
 )
 
+#: Words no English Sentence ends on: articles, prepositions and conjunctions. A stop
+#: after one of these is the engine's mistake, so it is removed and the thought rejoins.
+SENTENCE_FINAL_IMPOSSIBILITIES: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "to",
+        "by",
+        "with",
+        "from",
+        "for",
+        "in",
+        "on",
+        "at",
+        "as",
+        "into",
+        "onto",
+        "upon",
+        "between",
+        "against",
+        "during",
+        "within",
+        "via",
+        "per",
+        "than",
+        "and",
+        "but",
+        "or",
+        "nor",
+        "although",
+        "unless",
+        "whether",
+        "whereas",
+        "lest",
+    }
+)
+
 #: A Segment is low confidence when its average log-probability is at most this.
 LOW_AVG_LOGPROB = -1.0
 #: A Segment is low confidence when its no-speech probability is at least this.

@@ -242,17 +242,20 @@ right flag for a script that reads stderr on failure.
 The recognition engine's own segments are not the output. A cue holds **one sentence**, the
 way a subtitler shapes it: a run of words ending at punctuation, or at a silence long
 enough to end the thought. Two full sentences never share a cue; a one-word cue never
-flashes by itself either — a sentence too slight to read alone joins a neighbour. A
-sentence too long for one cue is cut in half near its middle, at a sentence or clause
-boundary where one exists, and each half is cut again if it is still too long.
+flashes by itself either — a sentence of 40 characters or fewer joins a neighbour. A
+sentence too long for one cue is cut near its middle, at a sentence or clause boundary
+where one exists, and each half is cut again if it is still too long. A cut piece is a
+**fragment**, and it reads like one: no capital it did not earn, and no full stop where the
+sentence carries on.
 
-Every cue still obeys the readability limits: at most 2 lines of 42 characters, at most 20
-characters per second, 1 to 7 seconds each, a 100 ms gap between cues and 200 ms of
+Every cue is **one line** and obeys the readability limits: at most 90 characters, at most
+20 characters per second, 1 to 7 seconds each, a 100 ms gap between cues and 200 ms of
 trailing padding. The 1-second minimum outranks both the gap and the reading-speed limit, so
 a cue that needs room to be read takes it and speech that is itself faster than 20 CPS stays
-one cue instead of flashing past word by word. The two lines of a cue are balanced rather
-than leaving one word stranded. Expect a faster reading pace and many more cues than a
-naive packer would produce.
+one cue instead of flashing past word by word. A 90-character line is wider than
+broadcast's two-line safe area, so a player may shrink or wrap it; that is the price of
+never breaking a thought across lines. Expect a faster reading pace and many more cues than
+a naive packer would produce.
 
 [`docs/subtitle-policy.md`](docs/subtitle-policy.md) is the reference for those numbers and
 for the text rules: music-only cues are dropped, bracketed non-speech markers are kept only
@@ -267,6 +270,9 @@ Changing a number there is a behaviour change, not a tweak.
 - **Music, applause and heavy effects can confuse the engine.** Voice-activity detection
   and the phantom-phrase blocklist reduce invented lines, but cannot eliminate them. A
   confident-sounding invention can still survive.
+- **A 90-character line can be wider than the frame's safe area.** Some players will shrink
+  it or wrap it themselves. That is deliberate: one wide line beats a thought cut in half
+  on every cue.
 - **English only.** The language is fixed, not detected. A non-English video is
   unsupported and will produce nonsense: there is no translation and no language check to
   warn you that it went wrong.
@@ -328,5 +334,6 @@ uv run subie doctor
   - [`docs/adr/0004-distribution-and-native-deps.md`](docs/adr/0004-distribution-and-native-deps.md)
   - [`docs/adr/0005-parallel-jobs.md`](docs/adr/0005-parallel-jobs.md)
   - [`docs/adr/0006-one-sentence-per-cue.md`](docs/adr/0006-one-sentence-per-cue.md)
+  - [`docs/adr/0007-one-line-fragments.md`](docs/adr/0007-one-line-fragments.md)
 - [`.scratch/auto-sidecar/spec.md`](.scratch/auto-sidecar/spec.md) — the full specification
   the tool was built from.

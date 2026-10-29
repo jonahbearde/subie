@@ -1,9 +1,7 @@
 1
 00:00:00,000 --> 00:00:02,400
-But what is it that makes
-a contained story work?
+But what is it that makes a contained story work?
 
 2
 00:00:02,920 --> 00:00:05,260
-And I thought it was quite
-hypnotic and beautiful.
+And I thought it was quite hypnotic and beautiful.

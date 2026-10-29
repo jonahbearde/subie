@@ -1,0 +1,21 @@
+# Two Sentences of 44 characters each are comfortable on their own: neither is
+# merged, however much room the pair would leave.
+S 0.000 3.600
+W 0.000 0.400 The
+W 0.400 0.800 first
+W 0.800 1.200 thing
+W 1.200 1.600 you
+W 1.600 2.000 should
+W 2.000 2.400 know
+W 2.400 2.800 is
+W 2.800 3.200 this
+W 3.200 3.600 one.
+S 4.000 7.200
+W 4.000 4.400 The
+W 4.400 4.800 second
+W 4.800 5.200 thing
+W 5.200 5.600 matters
+W 5.600 6.000 even
+W 6.000 6.400 more
+W 6.400 6.800 than
+W 6.800 7.200 that.

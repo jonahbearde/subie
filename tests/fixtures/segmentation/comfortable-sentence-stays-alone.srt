@@ -1,0 +1,7 @@
+1
+00:00:00,000 --> 00:00:03,800
+The first thing you should know is this one.
+
+2
+00:00:04,000 --> 00:00:07,400
+The second thing matters even more than that.

@@ -1,9 +1,7 @@
 1
 00:00:00,000 --> 00:00:02,880
-The committee met on Tuesday
-afternoon to discuss.
+The committee met on Tuesday afternoon to discuss
 
 2
 00:00:02,880 --> 00:00:06,320
-The proposal and then decided
-to postpone the vote.
+the proposal and then decided to postpone the vote.

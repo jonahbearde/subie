@@ -1,0 +1,23 @@
+# A 126-character Sentence with no clause punctuation: the cap forces a cut.
+S 0.000 6.720
+W 0.000 0.320 The
+W 0.320 0.640 committee
+W 0.640 0.960 met
+W 0.960 1.280 on
+W 1.280 1.600 Tuesday
+W 1.600 1.920 afternoon
+W 1.920 2.240 to
+W 2.240 2.560 discuss
+W 2.560 2.880 the
+W 2.880 3.200 proposal
+W 3.200 3.520 and
+W 3.520 3.840 then
+W 3.840 4.160 decided
+W 4.160 4.480 to
+W 4.480 4.800 postpone
+W 4.800 5.120 the
+W 5.120 5.440 vote
+W 5.440 5.760 until
+W 5.760 6.080 everyone
+W 6.080 6.400 had
+W 6.400 6.720 spoken.

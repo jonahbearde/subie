@@ -1,0 +1,7 @@
+1
+00:00:00,000 --> 00:00:02,800
+The operator checked the calibration rig twice and then wrote
+
+2
+00:00:02,800 --> 00:00:05,800
+the number down again before the shift ended at midnight.

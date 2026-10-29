@@ -14,7 +14,16 @@ import pytest
 
 from subie.cli import run
 from subie.exit_codes import EXIT_OK
-from subie.text import ends_sentence, is_bracketed, is_music_only, normalize
+from subie.guard import SENTENCE_FINAL_IMPOSSIBILITIES
+from subie.text import (
+    ALWAYS_CAPITALIZED,
+    ends_sentence,
+    final_token,
+    is_bracketed,
+    is_music_only,
+    normalize,
+    token,
+)
 from subie.transcript import Segment, Transcript, Word
 from tests.fakes import (
     CPU_ONLY,
@@ -27,15 +36,15 @@ from tests.wav import write_wav
 
 #: The policy's numbers, repeated here so that changing one in the code is a test diff.
 _LIMITS = {
-    "line_chars": 42,
-    "lines": 2,
+    "line_chars": 90,
+    "lines": 1,
     "cps": 20.0,
     "min_duration": 1.0,
     "max_duration": 7.0,
     "gap": 0.1,
     "padding": 0.2,
     "sentence_pause": 0.5,
-    "rescue_min_chars": 15,
+    "rescue_min_chars": 40,
     "rescue_min_speech": 1.0,
 }
 
@@ -199,6 +208,10 @@ def assert_readability(data: bytes, transcript: Transcript, *, label: str) -> No
     cues = _timed_cues(data)
     assert cues, f"{label}: no Cues"
     words = transcript_words(transcript)
+    sentences = _sentence_ranges(words)
+    starts = frozenset(first for first, _ in sentences)
+    ends = frozenset(last for _, last in sentences)
+    capitals = _capitals(words, _raw_sentence_ranges(words))
     cursor = 0
 
     for index, (start, end, lines) in enumerate(cues):
@@ -210,6 +223,7 @@ def assert_readability(data: bytes, transcript: Transcript, *, label: str) -> No
         _assert_limits(
             position, start, end, lines, next_start=next_start, words=words, begin=begin, stop=stop
         )
+        _assert_fragment(position, lines, words, begin, stop, starts, ends, capitals)
         _assert_one_sentence(position, span)
 
         assert abs(start - span[0].start) <= 0.001, (
@@ -246,7 +260,7 @@ def _assert_limits(
     begin: int,
     stop: int,
 ) -> None:
-    assert 1 <= len(lines) <= _LIMITS["lines"], f"{position}: {len(lines)} lines"
+    assert len(lines) == _LIMITS["lines"], f"{position}: {len(lines)} lines, not one"
     for line in lines:
         assert len(line) <= _LIMITS["line_chars"], f"{position}: line too long: {line!r}"
 
@@ -304,6 +318,109 @@ def _displayed_duration(words: list[SpokenWord], first: int, last: int) -> float
     return end - start
 
 
+def _assert_fragment(
+    position: str,
+    lines: list[str],
+    words: list[SpokenWord],
+    begin: int,
+    stop: int,
+    starts: frozenset[int],
+    ends: frozenset[int],
+    capitals: frozenset[str],
+) -> None:
+    """A Cue opens and closes its Sentence unless it is a Fragment.
+
+    A Fragment may start lowercase or end without a stop only where the Transcript shows
+    the Sentence carrying on, and a lowercase proper noun is never allowed.
+    """
+    text = " ".join(lines)
+    if is_bracketed(text):
+        # A marker is not a sentence: it is neither capitalized nor punctuated.
+        return
+    begins_sentence = begin in starts
+    ends_sentence_here = (stop - 1) in ends
+
+    first_cased = _first_cased(text)
+    if first_cased is not None and first_cased.islower():
+        assert not begins_sentence, f"{position}: starts lowercase at a Sentence start"
+        original = token(words[begin].text)
+        assert original not in capitals, f"{position}: lowercased a capitalized token: {original!r}"
+
+    if ends_sentence(text):
+        assert ends_sentence_here, f"{position}: a stop where its Sentence carries on"
+    else:
+        assert not ends_sentence_here, f"{position}: no stop at a Sentence end"
+
+
+def _first_cased(text: str) -> str | None:
+    """The first letter, ignoring leading punctuation and quotes; ``None`` after a digit."""
+    for character in text:
+        if character.isdigit():
+            return None
+        if character.isalpha():
+            return character
+    return None
+
+
+def _sentence_ranges(words: list[SpokenWord]) -> list[tuple[int, int]]:
+    """The Sentence ranges the policy's own rule would find, spurious stops repaired."""
+    ranges: list[tuple[int, int]] = []
+    first = 0
+    for index, word in enumerate(words):
+        paused = (
+            index + 1 < len(words)
+            and words[index + 1].start - word.end >= _LIMITS["sentence_pause"]
+        )
+        if is_bracketed(word.text):
+            if first < index:
+                ranges.append((first, index - 1))
+            ranges.append((index, index))
+            first = index + 1
+        elif (ends_sentence(word.text) and not _spurious_stop(word.text)) or paused:
+            ranges.append((first, index))
+            first = index + 1
+    if first < len(words):
+        ranges.append((first, len(words) - 1))
+    return ranges
+
+
+def _raw_sentence_ranges(words: list[SpokenWord]) -> list[tuple[int, int]]:
+    """The ranges before repair, so a capital after a spurious stop is not vouched for."""
+    ranges: list[tuple[int, int]] = []
+    first = 0
+    for index, word in enumerate(words):
+        paused = (
+            index + 1 < len(words)
+            and words[index + 1].start - word.end >= _LIMITS["sentence_pause"]
+        )
+        if is_bracketed(word.text):
+            if first < index:
+                ranges.append((first, index - 1))
+            ranges.append((index, index))
+            first = index + 1
+        elif ends_sentence(word.text) or paused:
+            ranges.append((first, index))
+            first = index + 1
+    if first < len(words):
+        ranges.append((first, len(words) - 1))
+    return ranges
+
+
+def _spurious_stop(text: str) -> bool:
+    return ends_sentence(text) and final_token(text).casefold() in SENTENCE_FINAL_IMPOSSIBILITIES
+
+
+def _capitals(words: list[SpokenWord], sentences: list[tuple[int, int]]) -> frozenset[str]:
+    """The tokens the Transcript itself capitalizes mid-Sentence, plus ``I``."""
+    capitals = set(ALWAYS_CAPITALIZED)
+    for first, last in sentences:
+        for word in words[first + 1 : last + 1]:
+            candidate = token(word.text)
+            if candidate and candidate[0].isupper():
+                capitals.add(candidate)
+    return frozenset(capitals)
+
+
 def _assert_one_sentence(position: str, span: list[SpokenWord]) -> None:
     """A Cue holds one Sentence unless one of its Sentences is too slight to stand alone."""
     sentences = _sentences(span)
@@ -321,10 +438,9 @@ def _sentences(span: list[SpokenWord]) -> list[tuple[int, int]]:
     first = 0
     for index, word in enumerate(span):
         paused = (
-            index + 1 < len(span)
-            and span[index + 1].start - word.end >= _LIMITS["sentence_pause"]
+            index + 1 < len(span) and span[index + 1].start - word.end >= _LIMITS["sentence_pause"]
         )
-        if ends_sentence(word.text) or paused:
+        if (ends_sentence(word.text) and not _spurious_stop(word.text)) or paused:
             ranges.append((first, index))
             first = index + 1
     if first < len(span):
@@ -336,7 +452,7 @@ def _slight(span: list[SpokenWord]) -> bool:
     text = normalize(" ".join(word.text for word in span))
     if text is None:
         return True
-    if len(text) < _LIMITS["rescue_min_chars"]:
+    if len(text) <= _LIMITS["rescue_min_chars"]:
         return True
     return span[-1].end - span[0].start < _LIMITS["rescue_min_speech"]
 

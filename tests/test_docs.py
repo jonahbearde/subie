@@ -148,3 +148,12 @@ def test_policy_describes_one_sentence_per_cue_with_a_rescue_and_a_halving_rule(
     assert "One Sentence, one Cue" in POLICY
     assert "Rescue" in POLICY
     assert "halving" in POLICY.lower() or "halved" in POLICY.lower()
+
+
+def test_policy_describes_one_line_cues_and_fragments():
+    limits = _policy_limits()
+
+    assert limits["Lines per cue"].startswith(str(MAX_LINES_PER_CUE))
+    assert "Fragment" in POLICY
+    assert "lowercased" in POLICY
+    assert "terminal stop" in POLICY

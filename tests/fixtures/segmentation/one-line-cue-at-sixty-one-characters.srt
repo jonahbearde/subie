@@ -1,0 +1,3 @@
+1
+00:00:00,000 --> 00:00:05,400
+What does it look like for a story to be stripped right back?

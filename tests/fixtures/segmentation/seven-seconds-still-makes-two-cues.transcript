@@ -1,0 +1,31 @@
+# One 9.4-second Sentence: the seven-second maximum puts it on two Cues, and each
+# half is a Fragment on one line.
+S 0.000 9.400
+W 0.000 0.336 Most
+W 0.336 0.671 commonly,
+W 0.671 1.007 this
+W 1.007 1.343 involves
+W 1.343 1.679 the
+W 1.679 2.014 story
+W 2.014 2.350 taking
+W 2.350 2.686 place
+W 2.686 3.021 in
+W 3.021 3.357 one
+W 3.357 3.693 primary
+W 3.693 4.029 location
+W 4.029 4.364 over
+W 4.364 4.700 a
+W 4.700 5.036 short
+W 5.036 5.371 span
+W 5.371 5.707 of
+W 5.707 6.043 time
+W 6.043 6.379 and
+W 6.379 6.714 with
+W 6.714 7.050 a
+W 7.050 7.386 limited
+W 7.386 7.721 cast
+W 7.721 8.057 of
+W 8.057 8.393 characters
+W 8.393 8.729 we
+W 8.729 9.064 can
+W 9.064 9.400 count.

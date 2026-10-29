@@ -4,5 +4,4 @@ Yes.
 
 2
 00:00:01,000 --> 00:00:07,700
-We should probably leave before traffic
-gets any worse than it is right now.
+We should probably leave before traffic gets any worse than it is right now.

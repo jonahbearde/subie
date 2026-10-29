@@ -1,9 +1,7 @@
 1
 00:00:00,000 --> 00:00:03,700
-The first sentence is long enough
-to fill most of a cue by itself.
+The first sentence is long enough to fill most of a cue by itself.
 
 2
 00:00:04,200 --> 00:00:07,400
-The second sentence is also long
-enough to need its own cue.
+The second sentence is also long enough to need its own cue.
