@@ -30,6 +30,7 @@ BEHAVIOURS = {
     "lopsided-clause-balances",
     "maximum-duration-splits",
     "minimum-duration-and-padding",
+    "minimum-duration-takes-the-gap",
     "tight-pause-clips-padding",
     "contiguous-clips-to-next-start",
 }

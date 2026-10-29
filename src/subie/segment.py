@@ -376,7 +376,12 @@ def _layout(text: str) -> tuple[str, ...] | None:
 
 
 def _timed_end(words: tuple[_Spoken, ...], first: int, last: int) -> float:
-    """The Cue's out: padding, the inter-Cue gap, and the one-second minimum."""
+    """The Cue's out: padding, then the one-second minimum, then the inter-Cue gap.
+
+    The minimum outranks the gap: when a Cue's padding cannot fill a second, ``out``
+    advances toward the next word and the gap shrinks, possibly to nothing. ``out`` never
+    passes the next word's start, so two Cues never overlap.
+    """
     start = words[first].start
     next_start = words[last + 1].start if last + 1 < len(words) else None
     end = _clipped_end(words[last].end, next_start)
@@ -385,10 +390,7 @@ def _timed_end(words: tuple[_Spoken, ...], first: int, last: int) -> float:
 
     target = start + MIN_CUE_DURATION_S
     if next_start is not None:
-        room = next_start - INTER_CUE_GAP_S
-        if room < end:
-            room = next_start
-        target = min(target, room)
+        target = min(target, next_start)
     return max(end, target)
 
 

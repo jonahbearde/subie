@@ -11,3 +11,5 @@ dist/
 uv.lock.tmp
 # decoded audio kept for debugging
 *.keep-audio.wav
+# sample Videos used for manual checks, never part of the build
+videos/

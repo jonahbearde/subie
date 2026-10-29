@@ -215,7 +215,9 @@ def assert_readability(data: bytes, transcript: Transcript, *, label: str) -> No
             available = next_start - span[-1].end
             gap = next_start - end
             assert gap <= available + 0.001, f"{position}: gap exceeds the silence"
-            if available >= _LIMITS["gap"] - 0.0005:
+            # The one-second minimum may take the gap, so the gap is only owed to a Cue
+            # that is already on screen long enough to be readable.
+            if available >= _LIMITS["gap"] - 0.0005 and end - start > _LIMITS["min_duration"]:
                 assert gap >= _LIMITS["gap"] - 0.002, (
                     f"{position}: gap to the next Cue is {gap:.3f}s"
                 )

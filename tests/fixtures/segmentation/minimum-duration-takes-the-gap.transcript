@@ -1,0 +1,18 @@
+# "Yes." cannot reach a second inside its 800 ms of silence, so the gap gives way:
+# the Cue ends where the next word starts instead of losing the second.
+S 0.0 7.5
+W 0.0 0.2 Yes.
+W 1.00 1.45 We
+W 1.45 1.95 should
+W 1.95 2.45 probably
+W 2.45 2.90 leave
+W 2.90 3.40 before
+W 3.40 3.90 traffic
+W 3.90 4.35 gets
+W 4.35 4.75 any
+W 4.75 5.25 worse
+W 5.25 5.75 than
+W 5.75 6.15 it
+W 6.15 6.55 is
+W 6.55 7.00 right
+W 7.00 7.50 now.

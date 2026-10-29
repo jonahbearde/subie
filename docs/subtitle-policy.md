@@ -36,9 +36,10 @@ trailing padding and the 1 s minimum count as reading time.
 5. `in` = first word's start; `out` = last word's end + 200 ms. It is clipped to
    `next_in - 100 ms` to reserve the gap. Where that would fall before the last word's end
    (overlapping word timings), `out` is clipped to `next_in` instead, because "out never
-   overlaps next cue's in" outranks the padding. Where the silence is shorter than the gap,
-   `out` is clipped to `next_in` and the gap shrinks. The 1 s minimum may extend `out` into
-   the gap.
+   overlaps next cue's in" outranks the padding. The 1 s minimum outranks the gap: when a
+   Cue's padding cannot fill a second, `out` advances toward `next_in`, shrinking the gap
+   to nothing if it has to, and stops at `next_in`. No speech is ever cut off, so a Cue
+   ends up under 1 s only when `next_in` is itself less than a second after its first word.
 6. Balance the two lines rather than filling line 1 to 42 characters and leaving line 2
    with one word. A sentence or clause boundary is used for the line break only when the
    shorter line is at least half the longer line; otherwise balance at a word boundary.
