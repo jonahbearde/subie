@@ -37,13 +37,20 @@ def test_readme_opens_with_the_zero_argument_example():
     blocks = _console_blocks(README)
 
     assert blocks, "the README must show a console example"
-    assert blocks[0].strip().splitlines() == ["subie video.mp4"]
+    first = blocks[0].strip().splitlines()
+    assert len(first) == 1, "the first example must be the run itself, not a recipe"
+    assert first[0] in {
+        "subie video.mp4",
+        "uv run subie video.mp4",
+    }, "the README must open with a path and nothing else"
 
 
-def test_readme_installs_on_both_machines_and_verifies_the_gpu_path():
-    assert 'uv tool install "subie[cuda] @ git+https://github.com/jonahbearde/subie.git"' in README
-    assert 'uv tool install "subie @ git+https://github.com/jonahbearde/subie.git"' in README
-    assert "subie doctor" in README
+def test_readme_sets_up_a_clone_on_both_machines_and_verifies_the_gpu_path():
+    assert "uv sync --extra cuda" in README
+    assert re.search(r"^uv sync$", README, re.MULTILINE), "the CPU setup line is missing"
+    assert 'uv tool install --editable ".[cuda]"' in README
+    assert "uv tool install --editable ." in README
+    assert "uv run subie doctor" in README
     assert "--device cuda" in README
     assert "not usable" in README
     assert "docs/install.md" in README
