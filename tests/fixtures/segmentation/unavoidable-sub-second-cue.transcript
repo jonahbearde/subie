@@ -1,0 +1,6 @@
+# "Yes." is a flash and its only neighbour is a standalone marker that must never be
+# joined, so this Cue is the one case that cannot reach a second.
+S 0.0 0.2
+W 0.0 0.2 Yes.
+S 0.3 0.5
+W 0.3 0.5 [Music]

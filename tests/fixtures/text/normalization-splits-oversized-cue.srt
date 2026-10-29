@@ -1,8 +1,8 @@
 1
-00:00:00,000 --> 00:00:05,300
-The operator checked the calibration rig
-twice and then wrote the number down.
+00:00:00,000 --> 00:00:02,400
+The operator checked the calibration rig.
 
 2
-00:00:05,400 --> 00:00:06,400
-Again.
+00:00:02,400 --> 00:00:06,000
+Twice and then wrote
+the number down again.

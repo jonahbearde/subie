@@ -14,6 +14,7 @@ from tests.golden import (
     assert_readability,
     assert_sidecar_bytes,
     fixture_cases,
+    parse_transcript,
     run_fixture,
 )
 
@@ -21,16 +22,28 @@ FIXTURES = Path(__file__).parent / "fixtures" / "segmentation"
 
 #: Every behaviour the ticket calls out has a fixture named here.
 BEHAVIOURS = {
-    "reading-speed-splits",
+    # one Sentence per Cue, and the rescue for one too slight to stand alone
+    "rescue-short-utterance-joins-forward",
+    "rescue-short-utterance-joins-backward",
+    "comfortable-sentences-stay-apart",
+    "rescued-cue-spans-a-sentence-end",
+    # what ends a Sentence when the engine punctuates nothing
+    "pause-ends-unpunctuated-sentence",
+    "short-pause-does-not-end-a-sentence",
+    # splitting a Sentence too long for one Cue
+    "midpoint-halving-not-capacity-filling",
+    "recursive-halving-quarters-a-long-sentence",
     "clause-boundary-splits",
-    "short-sentences-merge",
-    "merged-sentences-two-lines",
+    "reading-speed-splits",
+    "dense-speech-stays-whole",
+    "maximum-duration-splits",
+    # the limits themselves
     "long-sentences-stay-apart",
     "line-length-and-balance",
     "lopsided-clause-balances",
-    "maximum-duration-splits",
     "minimum-duration-and-padding",
     "minimum-duration-takes-the-gap",
+    "unavoidable-sub-second-cue",
     "tight-pause-clips-padding",
     "contiguous-clips-to-next-start",
 }
@@ -78,3 +91,32 @@ def test_a_failure_names_the_differing_cue_instead_of_a_byte_offset():
     assert "cue 2 differs" in message
     assert "General Kenobi." in message
     assert "General Grievous." in message
+
+
+def test_the_limits_checker_rejects_two_comfortable_sentences_in_one_cue():
+    transcript = parse_transcript(
+        (FIXTURES / "comfortable-sentences-stay-apart.transcript").read_text(encoding="utf-8")
+    )
+    packed = (
+        b"1\r\n00:00:00,000 --> 00:00:04,800\r\n"
+        b"The first thing you should know is this.\r\n"
+        b"The second thing matters even more.\r\n"
+    )
+
+    with pytest.raises(AssertionError, match="2 Sentences in one Cue"):
+        assert_readability(packed, transcript, label="packed")
+
+
+def test_the_limits_checker_rejects_a_short_cue_that_had_room_to_reach_a_second():
+    transcript = parse_transcript(
+        (FIXTURES / "minimum-duration-takes-the-gap.transcript").read_text(encoding="utf-8")
+    )
+    short = (
+        b"1\r\n00:00:00,000 --> 00:00:00,900\r\nYes.\r\n\r\n"
+        b"2\r\n00:00:01,000 --> 00:00:07,700\r\n"
+        b"We should probably leave before traffic\r\n"
+        b"gets any worse than it is right now.\r\n"
+    )
+
+    with pytest.raises(AssertionError, match="room to extend"):
+        assert_readability(short, transcript, label="short")

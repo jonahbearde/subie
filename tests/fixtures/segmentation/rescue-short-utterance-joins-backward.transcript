@@ -1,0 +1,9 @@
+# The last Sentence is too slight to stand alone and has nothing after it, so it absorbs
+# the Sentence before it instead of flashing by itself.
+S 0.0 3.3
+W 0.0 0.5 The
+W 0.5 1.0 backup
+W 1.0 1.5 finished
+W 1.5 2.0 at
+W 2.0 2.5 midnight.
+W 3.0 3.3 Right.

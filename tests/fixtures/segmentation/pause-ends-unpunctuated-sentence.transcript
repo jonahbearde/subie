@@ -1,0 +1,17 @@
+# No punctuation anywhere: the 500 ms pause is what ends the first Sentence.
+S 0.0 4.9
+W 0.000 0.300 what
+W 0.300 0.550 do
+W 0.550 0.800 you
+W 0.800 1.100 think
+W 1.100 1.400 you're
+W 1.400 1.700 going
+W 1.700 1.950 to
+W 1.950 2.400 accomplish
+W 2.900 3.200 you're
+W 3.200 3.450 not
+W 3.450 3.700 going
+W 3.700 3.950 to
+W 3.950 4.200 change
+W 4.200 4.600 anybody's
+W 4.600 4.900 mind

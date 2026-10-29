@@ -1,0 +1,22 @@
+# Both Sentences are spoken faster than 20 CPS, and no cut would leave two readable
+# halves: they stay whole instead of being shredded into flashing single words.
+S 0.0 5.06
+W 0.00 0.18 But
+W 0.18 0.32 what
+W 0.32 0.48 is
+W 0.48 0.62 it
+W 0.62 0.72 that
+W 0.72 0.90 makes
+W 0.90 1.10 a
+W 1.10 1.44 contained
+W 1.44 1.84 story
+W 1.84 2.20 work?
+W 2.92 3.20 And
+W 3.20 3.32 I
+W 3.32 3.60 thought
+W 3.60 3.72 it
+W 3.72 3.90 was
+W 3.90 4.20 quite
+W 4.20 4.62 hypnotic
+W 4.62 4.78 and
+W 4.78 5.06 beautiful.

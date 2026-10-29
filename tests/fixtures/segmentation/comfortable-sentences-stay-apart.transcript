@@ -1,4 +1,5 @@
-# Two sentences that fit one Cue; the line break falls on the sentence boundary.
+# Two Sentences that would fit one Cue; neither is too slight to stand alone, so
+# subtitles are never packed: one Sentence, one Cue.
 S 0.0 4.6
 W 0.0 0.3 The
 W 0.3 0.6 first

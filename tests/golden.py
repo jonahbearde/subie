@@ -14,7 +14,7 @@ import pytest
 
 from subie.cli import run
 from subie.exit_codes import EXIT_OK
-from subie.text import is_bracketed, is_music_only
+from subie.text import ends_sentence, is_bracketed, is_music_only, normalize
 from subie.transcript import Segment, Transcript, Word
 from tests.fakes import (
     CPU_ONLY,
@@ -33,6 +33,10 @@ _LIMITS = {
     "min_duration": 1.0,
     "max_duration": 7.0,
     "gap": 0.1,
+    "padding": 0.2,
+    "sentence_pause": 0.5,
+    "rescue_min_chars": 15,
+    "rescue_min_speech": 1.0,
 }
 
 #: The blocklist's thresholds, repeated for the same reason: the harness judges
@@ -199,18 +203,22 @@ def assert_readability(data: bytes, transcript: Transcript, *, label: str) -> No
 
     for index, (start, end, lines) in enumerate(cues):
         position = f"{label}: cue {index + 1} ({_timestamp(start)} --> {_timestamp(end)})"
-        _assert_limits(position, start, end, lines)
-
         tokens = _tokens(" ".join(lines))
         begin, stop = _match(words, cursor, tokens, position=position)
         span = words[begin:stop]
+        next_start = words[stop].start if stop < len(words) else None
+        _assert_limits(
+            position, start, end, lines, next_start=next_start, words=words, begin=begin, stop=stop
+        )
+        _assert_one_sentence(position, span)
+
         assert abs(start - span[0].start) <= 0.001, (
             f"{position}: start is not the first word's start"
         )
         assert end >= span[-1].end - 0.001, f"{position}: ends before the last word"
 
         if stop < len(words):
-            next_start = words[stop].start
+            assert next_start is not None
             assert end <= next_start + 0.001, f"{position}: overlaps the next Cue"
             available = next_start - span[-1].end
             gap = next_start - end
@@ -227,19 +235,110 @@ def assert_readability(data: bytes, transcript: Transcript, *, label: str) -> No
     assert not dropped, f"{label}: words dropped without a rule: {dropped}"
 
 
-def _assert_limits(position: str, start: float, end: float, lines: list[str]) -> None:
+def _assert_limits(
+    position: str,
+    start: float,
+    end: float,
+    lines: list[str],
+    *,
+    next_start: float | None,
+    words: list[SpokenWord],
+    begin: int,
+    stop: int,
+) -> None:
     assert 1 <= len(lines) <= _LIMITS["lines"], f"{position}: {len(lines)} lines"
     for line in lines:
         assert len(line) <= _LIMITS["line_chars"], f"{position}: line too long: {line!r}"
 
     duration = end - start
-    assert duration >= _LIMITS["min_duration"] - 0.002, f"{position}: {duration:.3f}s long"
     assert duration <= _LIMITS["max_duration"] + 0.002, f"{position}: {duration:.3f}s long"
+    if duration < _LIMITS["min_duration"] - 0.002:
+        room = "no next Cue" if next_start is None else f"next Cue at {_timestamp(next_start)}"
+        assert next_start is not None and next_start - start < _LIMITS["min_duration"] - 0.002, (
+            f"{position}: {duration:.3f}s long with room to extend ({room})"
+        )
 
     characters = len(" ".join(lines))
-    assert characters / duration <= _LIMITS["cps"] + 0.05, (
-        f"{position}: {characters / duration:.2f} CPS"
+    if characters / duration > _LIMITS["cps"] + 0.05:
+        assert not _split_reads_well(words, begin, stop), (
+            f"{position}: {characters / duration:.2f} CPS, and splitting it would have left "
+            "two readable Cues"
+        )
+
+
+def _split_reads_well(words: list[SpokenWord], begin: int, stop: int) -> bool:
+    """True when some cut leaves two Cues that are each readable and each a second long.
+
+    The reading-speed limit yields to the one-second minimum, so a dense Cue is only a
+    regression when splitting it would actually have been an improvement.
+    """
+    return any(
+        _part_reads_well(words, begin, cut) and _part_reads_well(words, cut + 1, stop - 1)
+        for cut in range(begin, stop - 1)
     )
+
+
+def _part_reads_well(words: list[SpokenWord], first: int, last: int) -> bool:
+    """Judge a hypothetical Cue by the policy's own timing and reading-speed rules."""
+    text = normalize(" ".join(word.text for word in words[first : last + 1]))
+    duration = _displayed_duration(words, first, last)
+    if text is None or duration < _LIMITS["min_duration"] - 0.002:
+        return False
+    return len(text) / duration <= _LIMITS["cps"] + 0.05
+
+
+def _displayed_duration(words: list[SpokenWord], first: int, last: int) -> float:
+    """The policy's ``out - in`` for a range of words, padding, gap and minimum included."""
+    start = words[first].start
+    last_end = words[last].end
+    next_start = words[last + 1].start if last + 1 < len(words) else None
+    end = last_end + _LIMITS["padding"]
+    if next_start is not None:
+        room = next_start - _LIMITS["gap"]
+        end = min(end, room) if room >= last_end else min(end, next_start)
+    if end - start < _LIMITS["min_duration"]:
+        target = start + _LIMITS["min_duration"]
+        if next_start is not None:
+            target = min(target, next_start)
+        end = max(end, target)
+    return end - start
+
+
+def _assert_one_sentence(position: str, span: list[SpokenWord]) -> None:
+    """A Cue holds one Sentence unless one of its Sentences is too slight to stand alone."""
+    sentences = _sentences(span)
+    for (first, last), (next_first, next_last) in zip(sentences, sentences[1:], strict=False):
+        earlier = span[first : last + 1]
+        later = span[next_first : next_last + 1]
+        assert _slight(earlier) or _slight(later), (
+            f"{position}: {len(sentences)} Sentences in one Cue and neither is slight"
+        )
+
+
+def _sentences(span: list[SpokenWord]) -> list[tuple[int, int]]:
+    """The Sentence ranges the policy's own rule would find in a Cue's words."""
+    ranges: list[tuple[int, int]] = []
+    first = 0
+    for index, word in enumerate(span):
+        paused = (
+            index + 1 < len(span)
+            and span[index + 1].start - word.end >= _LIMITS["sentence_pause"]
+        )
+        if ends_sentence(word.text) or paused:
+            ranges.append((first, index))
+            first = index + 1
+    if first < len(span):
+        ranges.append((first, len(span) - 1))
+    return ranges
+
+
+def _slight(span: list[SpokenWord]) -> bool:
+    text = normalize(" ".join(word.text for word in span))
+    if text is None:
+        return True
+    if len(text) < _LIMITS["rescue_min_chars"]:
+        return True
+    return span[-1].end - span[0].start < _LIMITS["rescue_min_speech"]
 
 
 def _match(
@@ -257,8 +356,13 @@ def _match(
         for stop in range(begin + 1, len(words) + 1):
             if _kept_tokens(words[begin:stop]) != tokens:
                 continue
-            # Punctuation can be a word of its own: it belongs to the Cue it follows.
-            while stop < len(words) and _kept_tokens(words[begin : stop + 1]) == tokens:
+            # Punctuation can be a word of its own: it belongs to the Cue it follows. A
+            # marker is not punctuation, though: it belongs to the Cue that shows it.
+            while (
+                stop < len(words)
+                and not is_bracketed(words[stop].text)
+                and _kept_tokens(words[begin : stop + 1]) == tokens
+            ):
                 stop += 1
             return begin, stop
     pytest.fail(

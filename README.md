@@ -214,12 +214,20 @@ right flag for a script that reads stderr on failure.
 
 ## How the Cues are built
 
-The recognition engine's own segments are not the output. Words are regrouped into Cues
-that obey subtitle readability limits: at most 2 lines of 42 characters, at most 20
+The recognition engine's own segments are not the output. A Cue holds **one sentence**, the
+way a subtitler shapes it: a run of words ending at punctuation, or at a silence long
+enough to end the thought. Two full sentences never share a Cue; a one-word Cue never
+flashes by itself either — a sentence too slight to read alone joins a neighbour. A sentence
+too long for one Cue is cut in half near its middle, at a sentence or clause boundary where
+one exists, and each half is cut again if it is still too long.
+
+Every Cue still obeys the readability limits: at most 2 lines of 42 characters, at most 20
 characters per second, 1 to 7 seconds each, a 100 ms gap between Cues and 200 ms of
-trailing padding. Long sentences are split at a sentence or clause boundary where one
-exists, otherwise at the longest pause or a balanced word boundary; the two lines of a Cue
-are balanced rather than leaving one word stranded.
+trailing padding. The 1-second minimum outranks both the gap and the reading-speed limit, so
+a Cue that needs room to be read takes it and speech that is itself faster than 20 CPS stays
+one Cue instead of flashing past word by word. The two lines of a Cue are balanced rather
+than leaving one word stranded. Expect a faster reading pace and many more Cues than the old
+packing produced.
 
 [`docs/subtitle-policy.md`](docs/subtitle-policy.md) is the reference for those numbers and
 for the text rules: music-only Cues are dropped, bracketed non-speech markers are kept only
@@ -293,5 +301,6 @@ uv run subie doctor
   - [`docs/adr/0003-english-only.md`](docs/adr/0003-english-only.md)
   - [`docs/adr/0004-distribution-and-native-deps.md`](docs/adr/0004-distribution-and-native-deps.md)
   - [`docs/adr/0005-parallel-jobs.md`](docs/adr/0005-parallel-jobs.md)
+  - [`docs/adr/0006-one-sentence-per-cue.md`](docs/adr/0006-one-sentence-per-cue.md)
 - [`.scratch/auto-sidecar/spec.md`](.scratch/auto-sidecar/spec.md) — the full specification
   the tool was built from.

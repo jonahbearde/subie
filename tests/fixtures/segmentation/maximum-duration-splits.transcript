@@ -1,4 +1,5 @@
-# One 7.7-second sentence: the maximum duration splits it rather than letting it run.
+# One 7.7-second sentence: too long for one Cue, so it is halved near its middle rather
+# than filled to the last word that fits and leaving "Sentence." as a scrap.
 S 0.0 7.5
 W 0.0 1.2 This
 W 1.2 2.4 is

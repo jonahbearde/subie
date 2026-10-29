@@ -1,5 +1,5 @@
 # 84 characters and no full stop: cleaning adds the stop, so the Cue no longer
-# fits two lines and is split at the pause instead of being written oversized.
+# fits two lines and is halved near its middle instead of being written oversized.
 S 0.0 5.8
 W 0.0 0.4 the
 W 0.4 0.8 operator

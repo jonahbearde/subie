@@ -1,15 +1,18 @@
 """Readability segmentation: a pure function from a Transcript to Cues.
 
-The engine's segment boundaries are input, not output. Words are packed into Cues until
-one of the limits in ``docs/subtitle-policy.md`` is reached; the values and their
-precedence live in that document, not here.
+A Sentence is the unit a Cue is built from: a run of words ending at terminal punctuation
+or at a long enough silence. Two Sentences therefore never share a Cue unless one of them
+is too slight to stand on screen alone, and a Sentence too long for one Cue is halved at the
+boundary nearest its middle, again if a half is still too long.
 
-This module does no I/O, touches no model and reads no clock, so the same Transcript
-always produces the same Cue list.
+The limits and the construction rules live in ``docs/subtitle-policy.md``; this module
+carries the values, not another explanation of them. It does no I/O, touches no model and
+reads no clock, so the same Transcript always produces the same Cue list.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from subie.guard import is_phantom
@@ -25,6 +28,9 @@ MIN_CUE_DURATION_S = 1.0
 MAX_CUE_DURATION_S = 7.0
 TRAILING_PADDING_S = 0.2
 INTER_CUE_GAP_S = 0.1
+SENTENCE_PAUSE_S = 0.5
+RESCUE_MIN_CHARS = 15
+RESCUE_MIN_SPEECH_S = 1.0
 
 
 @dataclass(frozen=True)
@@ -52,14 +58,13 @@ class _Spoken:
 
 
 def cues_from_transcript(transcript: Transcript) -> tuple[Cue, ...]:
-    """Build the readable Cue list for a Transcript.
+    """Build the readable Cue list for a Transcript, one Sentence to a Cue.
 
-    Sentence ends are treated as grouping opportunities, not as Cue boundaries: short
-    sentences share a Cue when the combination still satisfies every limit, and long
-    ones are split at clause punctuation or at the longest pause. Every limit is
-    measured against the Cue's *cleaned* text, so a Cue that cleaning lengthens is
-    split rather than written oversized, and a Cue that ends up saying nothing is
-    dropped.
+    A Sentence too slight to stand on screen alone absorbs one neighbour, and a Sentence
+    whose screen time is too short to reach the minimum joins one, so the Cue list reads
+    as thoughts rather than as the engine's chunks. Every limit is measured against the
+    Cue's *cleaned* text, so a Cue that cleaning lengthens is split rather than written
+    oversized, and a Cue that ends up saying nothing is dropped.
     """
     words = _speech_words(transcript)
     if not words:
@@ -123,44 +128,103 @@ def _speech_words(transcript: Transcript) -> tuple[_Spoken, ...]:
 
 
 def _cue_groups(words: tuple[_Spoken, ...]) -> list[tuple[int, int]]:
-    """Choose inclusive word ranges for Cues, merging short sentences where allowed.
+    """Choose inclusive word ranges for Cues, then split the ones over a limit.
 
-    The phantom-phrase guard runs here, on each sentence range, before any merging: a
-    doubtful invention is dropped on its own, so it never takes confident speech with it.
+    Grouping is one Sentence per Cue. Merging survives only as a rescue for a Sentence too
+    slight to read on its own, and as the way out of a Sentence with too little screen time
+    to reach the minimum. The phantom-phrase guard runs on each Sentence before any
+    merging, so a doubtful invention is dropped on its own and never takes confident speech
+    with it.
     """
+    sentences = [
+        (first, last)
+        for first, last in _sentences(words)
+        if not _invented(words, first, last)
+    ]
     groups: list[tuple[int, int]] = []
-    pending: tuple[int, int] | None = None
-    for first, last in _sentences(words):
-        if _invented(words, first, last):
-            if pending is not None:
-                groups.append(pending)
-                pending = None
-            continue
-        if _fits(words, first, last):
-            if (
-                pending is not None
-                and not words[first].standalone
-                and not words[pending[0]].standalone
-                and _fits(words, pending[0], last)
-            ):
-                pending = (pending[0], last)
+    sources: list[tuple[int, int]] = []
+    index = 0
+    while index < len(sentences):
+        first, last = sentences[index]
+        if index + 1 < len(sentences):
+            next_first, next_last = sentences[index + 1]
+            if _joins_forward(words, first, last, next_first, next_last):
+                groups.append((first, next_last))
+                sources.append((index, index + 1))
+                index += 2
                 continue
-            if pending is not None:
-                groups.append(pending)
-            pending = (first, last)
+        if _joins_backward(words, index, first, last, groups, sources):
+            groups[-1] = (groups[-1][0], last)
+            sources[-1] = (sources[-1][0], index)
+            index += 1
             continue
+        groups.append((first, last))
+        sources.append((index, index))
+        index += 1
 
-        if pending is not None:
-            groups.append(pending)
-            pending = None
-        groups.extend(_split(words, first, last))
-    if pending is not None:
-        groups.append(pending)
-    return groups
+    split: list[tuple[int, int]] = []
+    for first, last in groups:
+        split.extend(_halves(words, first, last))
+    return split
+
+
+def _joins_forward(
+    words: tuple[_Spoken, ...], first: int, last: int, next_first: int, next_last: int
+) -> bool:
+    """True when this Sentence should absorb the Sentence after it."""
+    if words[first].standalone or words[next_first].standalone:
+        return False
+    if _is_flash(words, first, last):
+        return True
+    return _is_slight(words, first, last) and _fits(words, first, next_last)
+
+
+def _joins_backward(
+    words: tuple[_Spoken, ...],
+    index: int,
+    first: int,
+    last: int,
+    groups: list[tuple[int, int]],
+    sources: list[tuple[int, int]],
+) -> bool:
+    """True when this Sentence should absorb the Sentence before it.
+
+    Only an untouched single-Sentence Cue can be absorbed: a rescue never grows into three
+    Sentences.
+    """
+    if not groups or sources[-1] != (index - 1, index - 1):
+        return False
+    previous_first = groups[-1][0]
+    if words[first].standalone or words[previous_first].standalone:
+        return False
+    if _is_flash(words, first, last):
+        return True
+    return _is_slight(words, first, last) and _fits(words, previous_first, last)
+
+
+def _is_slight(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
+    """True when this Sentence is too short in text or in speech to stand on screen."""
+    text = _display(words, first, last)
+    if text is None:
+        return False
+    if len(text) < RESCUE_MIN_CHARS:
+        return True
+    return words[last].end - words[first].start < RESCUE_MIN_SPEECH_S
+
+
+def _is_flash(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
+    """True when the next word starts too soon for this Sentence to reach the minimum."""
+    if last + 1 >= len(words):
+        return False
+    return words[last + 1].start - words[first].start < MIN_CUE_DURATION_S
 
 
 def _sentences(words: tuple[_Spoken, ...]) -> list[tuple[int, int]]:
-    """Inclusive word ranges, split after each sentence end and around lone markers."""
+    """Inclusive word ranges: one Sentence each, and around lone markers.
+
+    A long enough silence ends a Sentence just as terminal punctuation does, so speech the
+    engine left unpunctuated still breaks at the pauses the speaker made.
+    """
     ranges: list[tuple[int, int]] = []
     first = 0
     for last, word in enumerate(words):
@@ -169,12 +233,19 @@ def _sentences(words: tuple[_Spoken, ...]) -> list[tuple[int, int]]:
                 ranges.append((first, last - 1))
             ranges.append((last, last))
             first = last + 1
-        elif ends_sentence(word.text):
+        elif ends_sentence(word.text) or _pause_after(words, last):
             ranges.append((first, last))
             first = last + 1
     if first < len(words):
         ranges.append((first, len(words) - 1))
     return ranges
+
+
+def _pause_after(words: tuple[_Spoken, ...], index: int) -> bool:
+    """True when the silence before the next word is long enough to end a Sentence."""
+    if index + 1 >= len(words):
+        return False
+    return words[index + 1].start - words[index].end >= SENTENCE_PAUSE_S
 
 
 def _display(words: tuple[_Spoken, ...], first: int, last: int) -> str | None:
@@ -221,103 +292,114 @@ def _fits_reading_speed(words: tuple[_Spoken, ...], first: int, last: int) -> bo
     return len(text) / duration <= MAX_READING_CPS
 
 
-def _split(words: tuple[_Spoken, ...], first: int, last: int) -> list[tuple[int, int]]:
-    """Split an over-long sentence by text capacity, then by reading speed."""
-    groups: list[tuple[int, int]] = []
-    for start, end in _capacity_groups(words, first, last):
-        groups.extend(_reading_speed_groups(words, start, end))
-    return groups
+def _halves(words: tuple[_Spoken, ...], first: int, last: int) -> list[tuple[int, int]]:
+    """Recursive halving: cut near the middle until every part satisfies every limit.
 
-
-def _capacity_groups(words: tuple[_Spoken, ...], first: int, last: int) -> list[tuple[int, int]]:
-    """Greedy fill by line count, line length and maximum duration."""
-    groups: list[tuple[int, int]] = []
-    start = first
-    while start <= last:
-        end = _max_capacity_end(words, start, last)
-        if end >= last:
-            groups.append((start, last))
-            break
-        split = _preferred_break(words, start, end)
-        groups.append((start, split))
-        start = split + 1
-    return groups
-
-
-def _max_capacity_end(words: tuple[_Spoken, ...], first: int, last: int) -> int:
-    end = first
-    for candidate in range(first, last + 1):
-        if not _fits_text_and_duration(words, first, candidate):
-            break
-        end = candidate
-    return end
-
-
-def _reading_speed_groups(
-    words: tuple[_Spoken, ...], first: int, last: int
-) -> list[tuple[int, int]]:
-    """Split a Cue that would exceed the reading-speed limit; never stretch it."""
-    if last <= first or _fits_reading_speed(words, first, last):
-        return [(first, last)]
-    split = _reading_speed_break(words, first, last)
-    return _reading_speed_groups(words, first, split) + _reading_speed_groups(
-        words, split + 1, last
-    )
-
-
-def _preferred_break(words: tuple[_Spoken, ...], first: int, max_end: int) -> int:
-    """The best break point at or before ``max_end``, in policy precedence order."""
-    if max_end <= first:
-        return first
-    boundary = _last_boundary(words, first, max_end + 1)
-    return max_end if boundary is None else boundary
-
-
-def _reading_speed_break(words: tuple[_Spoken, ...], first: int, last: int) -> int:
-    """The best place to split a reading-speed offender, always before ``last``."""
-    boundary = _last_boundary(words, first, last)
-    if boundary is not None:
-        return boundary
-    return _balanced_split(words, first, last)
-
-
-def _last_boundary(words: tuple[_Spoken, ...], first: int, last: int) -> int | None:
-    """Latest sentence end, clause end, or longest pause strictly before ``last``."""
+    Character and duration limits are hard: a Cue that does not fit the screen cannot be
+    shown at all. Reading speed yields to the one-second minimum, because halving cannot
+    slow speech down: a range is only split for reading speed when the split actually
+    leaves two Cues that are each readable and each on screen for a second. Speech that is
+    already faster than the limit stays whole rather than being shredded into flashes.
+    """
     if last <= first:
+        return [(first, last)]
+    if not _fits_text_and_duration(words, first, last):
+        middle = _midpoint_break(words, first, last)
+        return _halves(words, first, middle) + _halves(words, middle + 1, last)
+    if _fits_reading_speed(words, first, last):
+        return [(first, last)]
+    cut = _readable_break(words, first, last)
+    if cut is None:
+        return [(first, last)]
+    return [(first, cut), (cut + 1, last)]
+
+
+def _readable_break(words: tuple[_Spoken, ...], first: int, last: int) -> int | None:
+    """The best cut that leaves two readable Cues, or ``None`` when no cut would."""
+    candidates = [
+        index
+        for index in range(first, last)
+        if _reads_well(words, first, index) and _reads_well(words, index + 1, last)
+    ]
+    if not candidates:
         return None
-    for index in range(last - 1, first - 1, -1):
-        if ends_sentence(words[index].text):
-            return index
-    for index in range(last - 1, first - 1, -1):
-        if ends_clause(words[index].text):
-            return index
-    return _longest_pause(words, first, last)
+    return _best_boundary(words, first, last, candidates)
 
 
-def _longest_pause(words: tuple[_Spoken, ...], first: int, last: int) -> int | None:
-    """The latest word before the longest positive inter-word pause."""
-    best: int | None = None
-    best_pause = 0.0
-    for index in range(first, last):
-        pause = words[index + 1].start - words[index].end
-        if pause > best_pause:
-            best = index
-            best_pause = pause
-    return best
+def _reads_well(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
+    """True when this range is both readable at its speed and on screen for a second."""
+    return _shows_a_second(words, first, last) and _fits_reading_speed(words, first, last)
 
 
-def _balanced_split(words: tuple[_Spoken, ...], first: int, last: int) -> int:
-    """The word boundary whose two halves differ least in characters."""
-    best = first
-    best_score: int | None = None
-    for index in range(first, last):
-        left = len(_cue_text(words, first, index))
-        right = len(_cue_text(words, index + 1, last))
-        score = abs(left - right)
-        if best_score is None or score < best_score:
-            best = index
-            best_score = score
-    return best
+def _shows_a_second(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
+    """True when this range has enough screen time to reach the one-second minimum."""
+    return _timed_end(words, first, last) - words[first].start >= MIN_CUE_DURATION_S
+
+
+def _midpoint_break(words: tuple[_Spoken, ...], first: int, last: int) -> int:
+    """The boundary nearest the middle, from the strongest class that has a balanced one.
+
+    A Sentence end outranks clause punctuation, which outranks a long pause, which
+    outranks any word boundary — but a class only wins while its boundary still leaves two
+    halves, not a Cue and a scrap. Whichever class wins, its boundary nearest the character
+    midpoint is chosen. Never mid-word.
+    """
+    boundaries = list(range(first, last))
+    for applicable in _BOUNDARY_CLASSES:
+        preferred = [
+            index
+            for index in boundaries
+            if applicable(words, index)
+            and _balanced(_cue_text(words, first, index), _cue_text(words, index + 1, last))
+        ]
+        if preferred:
+            return _nearest_midpoint(words, first, last, preferred)
+    return _nearest_midpoint(words, first, last, boundaries)
+
+
+def _best_boundary(
+    words: tuple[_Spoken, ...], first: int, last: int, candidates: Iterable[int]
+) -> int:
+    """The strongest-class candidate nearest the character midpoint."""
+    available = list(candidates)
+    for applicable in _BOUNDARY_CLASSES:
+        preferred = [index for index in available if applicable(words, index)]
+        if preferred:
+            return _nearest_midpoint(words, first, last, preferred)
+    return _nearest_midpoint(words, first, last, available)
+
+
+def _ends_sentence_at(words: tuple[_Spoken, ...], index: int) -> bool:
+    return ends_sentence(words[index].text)
+
+
+def _ends_clause_at(words: tuple[_Spoken, ...], index: int) -> bool:
+    return ends_clause(words[index].text)
+
+
+def _paused_at(words: tuple[_Spoken, ...], index: int) -> bool:
+    return _pause_after(words, index)
+
+
+#: Candidate split boundaries, strongest first.
+_BOUNDARY_CLASSES: tuple[Callable[[tuple[_Spoken, ...], int], bool], ...] = (
+    _ends_sentence_at,
+    _ends_clause_at,
+    _paused_at,
+)
+
+
+def _nearest_midpoint(
+    words: tuple[_Spoken, ...], first: int, last: int, candidates: Iterable[int]
+) -> int:
+    """The candidate whose two halves differ least in characters."""
+
+    def distance(index: int) -> tuple[int, int]:
+        outer = len(_cue_text(words, first, index))
+        inner = len(_cue_text(words, index + 1, last))
+        return abs(outer - inner), index
+
+    return min(candidates, key=distance)
 
 
 def _cue_text(words: tuple[_Spoken, ...], first: int, last: int) -> str:

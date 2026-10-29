@@ -1,0 +1,20 @@
+# 101 characters with no clause punctuation: capacity filling would leave a 16-character
+# scrap, so the Sentence is halved near its middle instead.
+S 0.0 6.12
+W 0.00 0.36 The
+W 0.36 0.72 committee
+W 0.72 1.08 met
+W 1.08 1.44 on
+W 1.44 1.80 Tuesday
+W 1.80 2.16 afternoon
+W 2.16 2.52 to
+W 2.52 2.88 discuss
+W 2.88 3.24 the
+W 3.24 3.60 proposal
+W 3.60 3.96 and
+W 3.96 4.32 then
+W 4.32 4.68 decided
+W 4.68 5.04 to
+W 5.04 5.40 postpone
+W 5.40 5.76 the
+W 5.76 6.12 vote

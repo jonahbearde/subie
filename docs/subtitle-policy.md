@@ -17,32 +17,66 @@ A Cue must satisfy all of these, in this precedence order when they conflict:
 | Gap between cues | 100 ms | Stops players merging adjacent cues visually |
 | Trailing padding | 200 ms past last word | Perceptual comfort |
 
-When a sentence cannot fit within 2 × 42 characters at 20 CPS, split it — at a sentence or
-clause boundary where one exists, otherwise at the longest pause or a balanced word
-boundary. The split is never mid-word.
+When a Sentence cannot fit within 2 × 42 characters, 7 s or 20 CPS, it is halved near its
+middle — see *Cue construction* below. The split is never mid-word.
 
 Reading speed is the Cue's characters divided by its on-screen duration (`out - in`), so the
-trailing padding and the 1 s minimum count as reading time.
+trailing padding and the 1 s minimum count as reading time. It is the one limit that yields
+to the 1 s minimum: halving cannot make fast speech slower, so a range is only split for
+reading speed when the split leaves two Cues that are each readable *and* each on screen for
+a second. Speech that is itself faster than 20 CPS stays whole, because a whole thought at
+21 CPS is better than two word-flashes underneath it.
 
-## Cue construction (hybrid greedy-fill)
+## Sentence thresholds
 
-1. Start from word timings (`word_timestamps=True`).
-2. Fill a Cue word by word until adding the next word would break a line or duration
-   limit. If the resulting Cue would exceed the reading-speed limit, split it at the best
-   boundary below and repeat on each part; never stretch it.
-3. Prefer to break at, in order: sentence end (`.` `?` `!`), clause boundary (`,` `;` `:`),
-   the longest inter-word pause, then a balanced word boundary.
-4. Never merge across a sentence end unless *both* sentences fit inside one cue's limits.
-5. `in` = first word's start; `out` = last word's end + 200 ms. It is clipped to
+| Threshold | Value | Why |
+|---|---|---|
+| Sentence pause | 500 ms | Speech the engine left unpunctuated still breaks where the speaker paused |
+| Rescue by text | 15 characters | A Sentence shorter than this cannot be read on its own before it goes |
+| Rescue by speech | 1 s | A Sentence with less speech than this flashes past |
+
+A silence ends a Sentence just as terminal punctuation does, but it is the weakest reason to
+*split* one: a Sentence end from punctuation outranks clause punctuation, which outranks a
+500 ms pause, which outranks any word boundary.
+
+## Cue construction (one Sentence per Cue)
+
+1. Start from word timings (`word_timestamps=True`). A Sentence is a run of words ending
+   at `.` `?` `!` (closing quotes and brackets handled as the text rules say) or at an
+   inter-word silence of at least 500 ms. A Segment never has any bearing on where a Cue
+   starts or ends.
+2. One Sentence, one Cue. Two Sentences never share a Cue however much room is left.
+3. **Rescue.** A Sentence under 15 characters of text, or spanning under 1 s of speech, may
+   absorb exactly one neighbour: the following Sentence when the pair still satisfies every
+   limit above, otherwise the preceding Sentence, otherwise it stays alone. A Cue never
+   holds three Sentences, and a standalone marker never joins anything.
+4. **The flash case.** A Sentence with less than a second between its first word and the
+   next word cannot reach the minimum on screen. It absorbs a neighbour even when the pair
+   breaks the character and duration limits, and the split in the next step re-cuts the
+   combination. A Cue under 1 s survives only when there is nothing to join: a clip whose
+   only speech is one short phrase, or a neighbour that cannot be joined.
+5. **Split by halving.** A range that breaks the character, duration or reading-speed limit
+   is cut at the boundary nearest its character midpoint; any part still over a limit is cut
+   again the same way. Candidate boundaries, strongest class first: a Sentence end, clause
+   punctuation (`,` `;` `:`), a pause of at least 500 ms, then any word boundary. A weaker
+   class is used only when no stronger boundary leaves two halves — the shorter at least
+   half the longer. The splitter also cuts a pair a rescue produced, so a rescued Cue may
+   legitimately span a Sentence end. Reading speed yields to the 1 s minimum as described
+   above: a range is only split for reading speed when both halves would read well, so a
+   Cue faster than 20 CPS is always one that could not be improved by splitting.
+6. `in` = first word's start; `out` = last word's end + 200 ms. It is clipped to
    `next_in - 100 ms` to reserve the gap. Where that would fall before the last word's end
    (overlapping word timings), `out` is clipped to `next_in` instead, because "out never
    overlaps next cue's in" outranks the padding. The 1 s minimum outranks the gap: when a
    Cue's padding cannot fill a second, `out` advances toward `next_in`, shrinking the gap
    to nothing if it has to, and stops at `next_in`. No speech is ever cut off, so a Cue
    ends up under 1 s only when `next_in` is itself less than a second after its first word.
-6. Balance the two lines rather than filling line 1 to 42 characters and leaving line 2
+7. Balance the two lines rather than filling line 1 to 42 characters and leaving line 2
    with one word. A sentence or clause boundary is used for the line break only when the
    shorter line is at least half the longer line; otherwise balance at a word boundary.
+
+There is no packing strategy. A Sentence that is comfortably readable on its own is never
+merged, and the reading pace goes up because there are roughly twice as many Cues.
 
 ## Text normalization
 

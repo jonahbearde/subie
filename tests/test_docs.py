@@ -17,6 +17,9 @@ from subie.segment import (
     MAX_LINES_PER_CUE,
     MAX_READING_CPS,
     MIN_CUE_DURATION_S,
+    RESCUE_MIN_CHARS,
+    RESCUE_MIN_SPEECH_S,
+    SENTENCE_PAUSE_S,
     TRAILING_PADDING_S,
 )
 
@@ -124,3 +127,17 @@ def test_policy_cue_limits_match_the_segmenter():
     assert f"{MAX_CUE_DURATION_S:g} s max" in limits["Cue duration"]
     assert f"{INTER_CUE_GAP_S * 1000:g} ms" in limits["Gap between cues"]
     assert f"{TRAILING_PADDING_S * 1000:g} ms" in limits["Trailing padding"]
+
+
+def test_policy_sentence_thresholds_match_the_segmenter():
+    limits = _policy_limits()
+
+    assert f"{SENTENCE_PAUSE_S * 1000:g} ms" in limits["Sentence pause"]
+    assert str(RESCUE_MIN_CHARS) in limits["Rescue by text"]
+    assert f"{RESCUE_MIN_SPEECH_S:g} s" in limits["Rescue by speech"]
+
+
+def test_policy_describes_one_sentence_per_cue_with_a_rescue_and_a_halving_rule():
+    assert "One Sentence, one Cue" in POLICY
+    assert "Rescue" in POLICY
+    assert "halving" in POLICY.lower() or "halved" in POLICY.lower()

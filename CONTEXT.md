@@ -23,10 +23,22 @@ The speech-recognition engine's raw output: words with timings, plus confidence.
 shown to a user directly; it is the material a Cue list is derived from.
 _Avoid_: raw text, speech-to-text result, recognition output
 
+**Segment**:
+One chunk of a Transcript, as the recognition engine emitted it. Input to segmentation,
+never the thing on screen; its boundaries have no bearing on where a Cue starts or ends.
+_Avoid_: phrase, line
+
+**Sentence**:
+One complete thought in the Transcript: a run of words ending at terminal punctuation or
+at a silence long enough for the speaker to have finished it. The unit a Cue is built
+from.
+_Avoid_: clause, fragment, phrase
+
 **Cue**:
 One on-screen subtitle event — a start time, an end time, and at most two lines of text.
-The unit that is written to a Sidecar. A Cue is shaped by readability, not by whatever
-boundaries the engine produced, so many Cues never match a Transcript segment 1:1.
+The unit that is written to a Sidecar. A Cue is one Sentence shaped by readability — split
+if it is too long, joined to a neighbour only if it is too slight to stand alone — so many
+Cues never match a Segment 1:1.
 _Avoid_: line, caption, block, entry, subtitle event
 
 **Sidecar**:
