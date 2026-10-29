@@ -1,13 +1,10 @@
 """Readability segmentation: a pure function from a Transcript to Cues.
 
-A Sentence is the unit a Cue is built from: a run of words ending at terminal punctuation
-or at a long enough silence. Two Sentences therefore never share a Cue unless one of them
-is too slight to stand on screen alone, and a Sentence too long for one Cue is halved at the
-boundary nearest its middle, again if a half is still too long.
-
-The limits and the construction rules live in ``docs/subtitle-policy.md``; this module
-carries the values, not another explanation of them. It does no I/O, touches no model and
-reads no clock, so the same Transcript always produces the same Cue list.
+A Sentence is the unit a Cue is built from, so the engine's Segment boundaries never bear
+on where a Cue starts or ends. The limits and the construction rules live in
+``docs/subtitle-policy.md``; this module carries the values, not another explanation of
+them. It does no I/O, touches no model and reads no clock, so the same Transcript always
+produces the same Cue list.
 """
 
 from __future__ import annotations
@@ -142,7 +139,7 @@ def _cue_groups(words: tuple[_Spoken, ...]) -> list[tuple[int, int]]:
         if not _invented(words, first, last)
     ]
     groups: list[tuple[int, int]] = []
-    sources: list[tuple[int, int]] = []
+    single: int | None = None
     index = 0
     while index < len(sentences):
         first, last = sentences[index]
@@ -150,16 +147,16 @@ def _cue_groups(words: tuple[_Spoken, ...]) -> list[tuple[int, int]]:
             next_first, next_last = sentences[index + 1]
             if _joins_forward(words, first, last, next_first, next_last):
                 groups.append((first, next_last))
-                sources.append((index, index + 1))
+                single = None
                 index += 2
                 continue
-        if _joins_backward(words, index, first, last, groups, sources):
+        if _joins_backward(words, index, first, last, groups, single):
             groups[-1] = (groups[-1][0], last)
-            sources[-1] = (sources[-1][0], index)
+            single = None
             index += 1
             continue
         groups.append((first, last))
-        sources.append((index, index))
+        single = index
         index += 1
 
     split: list[tuple[int, int]] = []
@@ -174,9 +171,7 @@ def _joins_forward(
     """True when this Sentence should absorb the Sentence after it."""
     if words[first].standalone or words[next_first].standalone:
         return False
-    if _is_flash(words, first, last):
-        return True
-    return _is_slight(words, first, last) and _fits(words, first, next_last)
+    return _absorbs(words, first, last, first, next_last)
 
 
 def _joins_backward(
@@ -185,21 +180,28 @@ def _joins_backward(
     first: int,
     last: int,
     groups: list[tuple[int, int]],
-    sources: list[tuple[int, int]],
+    single: int | None,
 ) -> bool:
     """True when this Sentence should absorb the Sentence before it.
 
     Only an untouched single-Sentence Cue can be absorbed: a rescue never grows into three
     Sentences.
     """
-    if not groups or sources[-1] != (index - 1, index - 1):
+    if not groups or single != index - 1:
         return False
     previous_first = groups[-1][0]
     if words[first].standalone or words[previous_first].standalone:
         return False
-    if _is_flash(words, first, last):
+    return _absorbs(words, first, last, previous_first, last)
+
+
+def _absorbs(
+    words: tuple[_Spoken, ...], first: int, last: int, merged_first: int, merged_last: int
+) -> bool:
+    """True when this Sentence takes a neighbour into its Cue, limits permitting."""
+    if not _shows_a_second(words, first, last):
         return True
-    return _is_slight(words, first, last) and _fits(words, previous_first, last)
+    return _is_slight(words, first, last) and _fits(words, merged_first, merged_last)
 
 
 def _is_slight(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
@@ -210,13 +212,6 @@ def _is_slight(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
     if len(text) < RESCUE_MIN_CHARS:
         return True
     return words[last].end - words[first].start < RESCUE_MIN_SPEECH_S
-
-
-def _is_flash(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
-    """True when the next word starts too soon for this Sentence to reach the minimum."""
-    if last + 1 >= len(words):
-        return False
-    return words[last + 1].start - words[first].start < MIN_CUE_DURATION_S
 
 
 def _sentences(words: tuple[_Spoken, ...]) -> list[tuple[int, int]]:
@@ -293,14 +288,7 @@ def _fits_reading_speed(words: tuple[_Spoken, ...], first: int, last: int) -> bo
 
 
 def _halves(words: tuple[_Spoken, ...], first: int, last: int) -> list[tuple[int, int]]:
-    """Recursive halving: cut near the middle until every part satisfies every limit.
-
-    Character and duration limits are hard: a Cue that does not fit the screen cannot be
-    shown at all. Reading speed yields to the one-second minimum, because halving cannot
-    slow speech down: a range is only split for reading speed when the split actually
-    leaves two Cues that are each readable and each on screen for a second. Speech that is
-    already faster than the limit stays whole rather than being shredded into flashes.
-    """
+    """Halve a range over a limit until every part fits, or cannot be improved further."""
     if last <= first:
         return [(first, last)]
     if not _fits_text_and_duration(words, first, last):
@@ -323,7 +311,7 @@ def _readable_break(words: tuple[_Spoken, ...], first: int, last: int) -> int | 
     ]
     if not candidates:
         return None
-    return _best_boundary(words, first, last, candidates)
+    return _strongest_boundary(words, first, last, candidates)
 
 
 def _reads_well(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
@@ -337,30 +325,20 @@ def _shows_a_second(words: tuple[_Spoken, ...], first: int, last: int) -> bool:
 
 
 def _midpoint_break(words: tuple[_Spoken, ...], first: int, last: int) -> int:
-    """The boundary nearest the middle, from the strongest class that has a balanced one.
-
-    A Sentence end outranks clause punctuation, which outranks a long pause, which
-    outranks any word boundary — but a class only wins while its boundary still leaves two
-    halves, not a Cue and a scrap. Whichever class wins, its boundary nearest the character
-    midpoint is chosen. Never mid-word.
-    """
+    """The balanced boundary nearest the middle, from the strongest class with one."""
     boundaries = list(range(first, last))
-    for applicable in _BOUNDARY_CLASSES:
-        preferred = [
-            index
-            for index in boundaries
-            if applicable(words, index)
-            and _balanced(_cue_text(words, first, index), _cue_text(words, index + 1, last))
-        ]
-        if preferred:
-            return _nearest_midpoint(words, first, last, preferred)
-    return _nearest_midpoint(words, first, last, boundaries)
+    balanced = [
+        index
+        for index in boundaries
+        if _balanced(_cue_text(words, first, index), _cue_text(words, index + 1, last))
+    ]
+    return _strongest_boundary(words, first, last, balanced or boundaries)
 
 
-def _best_boundary(
+def _strongest_boundary(
     words: tuple[_Spoken, ...], first: int, last: int, candidates: Iterable[int]
 ) -> int:
-    """The strongest-class candidate nearest the character midpoint."""
+    """The strongest-class candidate nearest the character midpoint. Never mid-word."""
     available = list(candidates)
     for applicable in _BOUNDARY_CLASSES:
         preferred = [index for index in available if applicable(words, index)]

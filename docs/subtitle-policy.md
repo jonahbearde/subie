@@ -63,7 +63,7 @@ A silence ends a Sentence just as terminal punctuation does, but it is the weake
    half the longer. The splitter also cuts a pair a rescue produced, so a rescued Cue may
    legitimately span a Sentence end. Reading speed yields to the 1 s minimum as described
    above: a range is only split for reading speed when both halves would read well, so a
-   Cue faster than 20 CPS is always one that could not be improved by splitting.
+   Cue faster than 20 CPS is one that splitting could not have brought within the limit.
 6. `in` = first word's start; `out` = last word's end + 200 ms. It is clipped to
    `next_in - 100 ms` to reserve the gap. Where that would fall before the last word's end
    (overlapping word timings), `out` is clipped to `next_in` instead, because "out never

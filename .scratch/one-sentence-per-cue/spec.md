@@ -274,3 +274,21 @@ the policy document.
 **Manual check after implementation.** Regenerate the sample video's Sidecar and read it,
 rather than only reading the diff of the fixtures: the point of this feature is how it feels to
 watch, and no assertion covers that.
+## Comments
+
+### Implementation notes
+
+- **Reading speed yields to the one-second minimum.** Taken literally, "20 CPS as a hard
+  split trigger" halved dense speech all the way down to single-word Cues of 0.2–0.3 s — the
+  exact flash failure this spec exists to prevent. Measured on the sample video, 203 of the
+  previous build's 385 Cues were those sub-second shards. A range is now split for reading
+  speed only when the split leaves two Cues that are each readable and each on screen for a
+  second; otherwise it stays whole. Recorded in `docs/adr/0006-one-sentence-per-cue.md` and
+  `docs/subtitle-policy.md`.
+- **The slight Sentence in a rescued Cue may be the later one.** The harness rule is checked
+  as "either Sentence is under the rescue thresholds", not "the earlier one is", because a
+  backward rescue (a slight last Sentence absorbing the comfortable one before it) is what
+  "otherwise the preceding neighbour" produces. See `rescue-short-utterance-joins-backward`.
+- **Cue counts.** The sample video produces 199 Cues, not roughly double the old 385: the old
+  count included the 203 sub-second shards above. Compare like with like — about 182 whole
+  Cues before, 199 now — rather than against the shard-inflated number.
